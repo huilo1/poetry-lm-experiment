@@ -7,6 +7,7 @@ from textwrap import dedent
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 import uvicorn
 
@@ -54,6 +55,13 @@ def build_index_html() -> str:
               margin: 0 auto;
               padding: 28px 20px 36px;
             }
+            .hero {
+              display: grid;
+              grid-template-columns: minmax(0, 1.8fr) 220px;
+              gap: 20px;
+              align-items: start;
+              margin-bottom: 18px;
+            }
             h1 {
               margin: 0 0 8px;
               font-size: clamp(2rem, 4vw, 3.6rem);
@@ -65,6 +73,15 @@ def build_index_html() -> str:
               margin: 0 0 20px;
               color: var(--muted);
               font-size: 1.05rem;
+            }
+            .portrait {
+              width: 100%;
+              aspect-ratio: 180 / 253;
+              object-fit: cover;
+              border-radius: 22px;
+              border: 1px solid var(--edge);
+              box-shadow: 0 14px 30px rgba(65, 42, 29, 0.08);
+              background: #e9ddcf;
             }
             .panel, .card {
               background: color-mix(in srgb, var(--paper) 92%, white);
@@ -183,6 +200,7 @@ def build_index_html() -> str:
               font-size: 0.95rem;
             }
             @media (max-width: 1180px) {
+              .hero { grid-template-columns: 1fr; }
               .controls { grid-template-columns: 1fr 1fr; }
               .status-grid, .results { grid-template-columns: 1fr; }
             }
@@ -190,11 +208,16 @@ def build_index_html() -> str:
         </head>
         <body>
           <main class="shell">
-            <h1>Poetry LM Compare</h1>
-            <p class="lead">
-              Сравнение трех текущих веток генерации по одной первой строке. Веб-приложение живет на
-              `ebekkuev.runningdog.org`, а инференс остается на отдельной GPU-машине и вызывается через proxy.
-            </p>
+            <section class="hero">
+              <div>
+                <h1>Poetry LM Compare</h1>
+                <p class="lead">
+                  Сравнение трех текущих веток генерации по одной первой строке. Веб-приложение живет на
+                  `ebekkuev.runningdog.org`, а инференс остается на отдельной GPU-машине и вызывается через proxy.
+                </p>
+              </div>
+              <img class="portrait" src="/static/khanapi-ebekkuev.jpg" alt="Ханапи Эбеккуев">
+            </section>
 
             <section class="panel">
               <div class="controls">
@@ -326,6 +349,8 @@ def build_index_html() -> str:
 
 def build_app(inference_api_base_url: str) -> FastAPI:
     app = FastAPI(title="Poetry LM Web App", version="0.1.0")
+    static_dir = os.path.join(os.path.dirname(__file__), "..", "web", "static")
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
     @app.get("/", response_class=HTMLResponse)
     async def index():
