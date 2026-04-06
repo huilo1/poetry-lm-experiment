@@ -2,6 +2,153 @@
 
 This file preserves the current project state so work can continue after context loss.
 
+## New Active Direction
+
+The next serious experiment is no longer another scratch variant, but a base-model comparison branch:
+- target base model: `Qwen/Qwen3-8B-Base`
+- method: completion-style QLoRA / SFT
+- task stays the same: input `1` line, generate `8` lines total, scheme `AABB CCDD`
+
+Implemented for this branch:
+- dataset converter: `scripts/build_qwen_sft_dataset.py`
+- training script: `scripts/train_qwen_sft.py`
+- generation script: `scripts/generate_qwen.py`
+- evaluation script: `scripts/evaluate_qwen_8line.py`
+- helper module: `src/poetry_lm/qwen_sft.py`
+- config: `configs/vast_qwen3_8b_aabb_qf2_qlora.json`
+
+Training format used for Qwen:
+- plain-text structured tags, no custom tokenizer
+- prompt prefix:
+  - `[TASK]`
+  - `[FORMAT]`
+  - `[SCHEME]`
+  - `[L1]`
+  - `[GEN]`
+  - `[L2]`
+- model is trained to complete lines `2-8` only
+
+Reason for this direction:
+- scratch-only stack appears close to its useful ceiling
+- strongest remaining hypothesis is that better language quality requires a strong Russian-capable base model
+
+### Qwen branch status
+
+Current Qwen dataset:
+- `data/qwen_aabb_qf2_sft`
+- built from `data/processed_aabb8_qf2`
+- stats:
+  - train `67180`
+  - val `5232`
+  - test `2172`
+
+Qwen training format:
+- prompt prefix:
+  - `[TASK] Продолжи русское стихотворение.`
+  - `[FORMAT] Ровно 8 строк.`
+  - `[SCHEME] AABB CCDD`
+  - `[L1] ...`
+  - `[GEN]`
+  - `[L2]`
+- supervised target is lines `2-8`
+
+Smoke validation completed successfully on Vast:
+- config: `configs/smoke_qwen3_0_6b_aabb_qf2_lora.json`
+- base model: `Qwen/Qwen3-0.6B-Base`
+- result: training loop completed end-to-end
+- best eval loss: about `2.7669`
+- train runtime: about `63s`
+
+Important infra fix discovered during smoke:
+- `bitsandbytes` / `triton` required a system C compiler inside the remote container
+- fix on remote host: install `build-essential` before QLoRA training
+
+Main run now in progress on Vast:
+- config: `configs/vast_qwen3_8b_aabb_qf2_qlora.json`
+- base model: `Qwen/Qwen3-8B-Base`
+- runtime: Vast instance `34242647`
+- host: `ssh9.vast.ai:12646`
+- remote train process: `python scripts/train_qwen_sft.py --config configs/vast_qwen3_8b_aabb_qf2_qlora.json`
+- remote artifacts directory: `/workspace/Poetry/artifacts/checkpoints/vast_qwen3_8b_aabb_qf2_qlora`
+- current state when this handoff was updated: weights fetch started (`Fetching 5 files...`)
+
+### Qwen throughput finding
+
+The first `8B` QLoRA config turned out to be too conservative and underutilized the GPU.
+
+Measured on Vast `RTX 4090 49GB`:
+- old mode: QLoRA (`load_in_4bit=true`) with checkpointing
+- observed VRAM: only about `15 GB`
+- observed wall time: about `22 sec / optimizer step`
+- this implied roughly `50+ hours` train time for the planned 2-epoch run
+
+Benchmark then confirmed a much faster regime:
+- config: `configs/benchmark_qwen3_8b_aabb_lora_bf16.json`
+- mode: plain LoRA in `bf16`, no `4bit`, no gradient checkpointing
+- batch: `8`
+- observed VRAM: about `44.8 GB`
+- observed GPU utilization: `100%`
+- observed step time: about `0.7 sec / step`
+
+Decision:
+- switch the main Qwen run away from QLoRA
+- use full-GPU LoRA bf16 instead
+- new main config: `configs/vast_qwen3_8b_aabb_qf2_lora_bf16.json`
+
+### Autonomous watcher
+
+To avoid manual polling, a local watcher was added:
+- script: `scripts/watch_qwen_vast_run.sh`
+- responsibility:
+  - poll remote train/eval status
+  - sync remote checkpoint directory to local `artifacts/downloaded/vast_qwen3_8b_aabb_qf2_lora_bf16`
+  - destroy Vast instance `34242647` after artifacts are synced
+
+Runtime bookkeeping:
+- pid file: `artifacts/logs/watch_qwen_vast_run.pid`
+- status log: `artifacts/logs/watch_qwen_vast_run.log`
+- stdout/stderr: `artifacts/logs/watch_qwen_vast_run.stdout.log`
+
+## Agreed Next Step After Qwen
+
+Once the current `Qwen3-8B-Base` branch is fully evaluated, the next comparison branch is:
+- model family: `GigaChat`
+- variant: `base`, not `instruct`
+- target candidate: `ai-sage/GigaChat3-10B-A1.8B-base`
+- training protocol: same `LoRA` setup style as the final successful Qwen run
+- purpose: clean `Qwen base vs GigaChat base` comparison under the same poetry task and the same evaluation protocol
+
+Important constraints for that next step:
+- do **not** switch to instruct for the primary comparison run
+- keep the same task definition and as much of the same dataset / metric pipeline as possible
+- inference should first be tested locally on the controlled `RTX 5060 Ti 8GB`
+- if local inference is not viable, move inference to a rented GPU instance
+
+## Final Qwen Result
+
+Branch:
+- `Qwen/Qwen3-8B-Base`
+- `LoRA bf16`
+- config: `configs/vast_qwen3_8b_aabb_qf2_lora_bf16.json`
+
+Training summary:
+- train runtime: about `10360.7s` (`2h 53m`)
+- best eval loss: `1.9239`
+- train loss: `1.9981`
+- local summary copy: `artifacts/downloaded/vast_qwen3_8b_aabb_qf2_lora_bf16/summary.json`
+
+Task evaluation on `300` prompts:
+- `exact_8_lines_rate = 0.98`
+- `second_line_rhyme_rate = 0.0233`
+- `aabb_ccdd_rate = 0.0`
+- local eval copy: `artifacts/downloaded/vast_qwen3_8b_aabb_qf2_lora_bf16/eval8.json`
+
+Interpretation:
+- the base model easily learned the fixed 8-line output length
+- but it did not internalize the required rhyme scheme under the current SFT format
+- compared to the scratch `AABB CCDD` baseline, it is dramatically worse on rhyme and scheme despite much better language fluency
+- this is an important negative result: for the strict rhyme-constrained task, the scratch poetry-only model outperformed the strong general-purpose base model
+
 ## Goal
 
 Russian-only poetry continuation model trained from scratch.

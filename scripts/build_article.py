@@ -252,6 +252,8 @@ def main() -> None:
     aabb8_stats = read_text_json(ROOT / "data/processed_aabb8/stats.json")
     aabb8_meta = read_text_json(ROOT / "data/processed_aabb8/meta.json")
     aabb8_qf2_stats = read_text_json(ROOT / "data/processed_aabb8_qf2/stats.json")
+    qwen_summary = read_text_json(ROOT / "artifacts/downloaded/vast_qwen3_8b_aabb_qf2_lora_bf16/summary.json")
+    qwen_eval = read_text_json(ROOT / "artifacts/downloaded/vast_qwen3_8b_aabb_qf2_lora_bf16/eval8.json")
 
     experiments = [
         Experiment(
@@ -384,6 +386,33 @@ def main() -> None:
         title="Сравнение качества 8-строчных моделей",
     )
 
+    baseline_eval = load_eval(ROOT / "artifacts/checkpoints/host_5060_8line_20m/best.eval8.json")
+    abab_eval = load_eval(ROOT / "artifacts/article_sync/host_5060_8line_abab_20m.best.eval8.json")
+    staged_eval = load_eval(ROOT / "artifacts/article_sync/host_5060_aabb_qf2_stage2_from_fullpoem_20m.best.eval8.json")
+    planned_eval = load_eval(ROOT / "artifacts/article_sync/host_5060_aabb_with_plan_20m.best.planned.eval8.json")
+
+    base_compare_svg = svg_grouped_bar_chart(
+        categories=["Scratch AABB CCDD", "Qwen3-8B-Base + LoRA"],
+        series=[
+            {
+                "label": "exact_8_lines_rate",
+                "color": "#bb4d34",
+                "values": [baseline_eval["exact_8_lines_rate"], qwen_eval["exact_8_lines_rate"]],
+            },
+            {
+                "label": "second_line_rhyme_rate",
+                "color": "#2f6f73",
+                "values": [baseline_eval["second_line_rhyme_rate"], qwen_eval["second_line_rhyme_rate"]],
+            },
+            {
+                "label": "scheme_rate",
+                "color": "#6b4f9d",
+                "values": [baseline_eval["aabb_ccdd_rate"], qwen_eval["aabb_ccdd_rate"]],
+            },
+        ],
+        title="Scratch baseline против base-модели Qwen3-8B-Base",
+    )
+
     corpus_svg = svg_simple_bars(
         labels=[
             "processed: rows_kept",
@@ -400,12 +429,6 @@ def main() -> None:
         title="Сжатие корпуса при переходе к более строгой постановке",
     )
 
-    planner_eval = load_eval(ROOT / "artifacts/article_sync/host_5060_aabb_end_planner_12m.best.plan.eval.json")
-    baseline_eval = load_eval(ROOT / "artifacts/checkpoints/host_5060_8line_20m/best.eval8.json")
-    abab_eval = load_eval(ROOT / "artifacts/article_sync/host_5060_8line_abab_20m.best.eval8.json")
-    staged_eval = load_eval(ROOT / "artifacts/article_sync/host_5060_aabb_qf2_stage2_from_fullpoem_20m.best.eval8.json")
-    planned_eval = load_eval(ROOT / "artifacts/article_sync/host_5060_aabb_with_plan_20m.best.planned.eval8.json")
-
     examples_html = "".join(
         [
             sample_block("Baseline AABB", baseline_eval["preview"][0]["prompt"], baseline_eval["preview"][0]["generated"]),
@@ -417,6 +440,7 @@ def main() -> None:
                 planned_eval["preview"][2]["generated"],
                 planned_eval["preview"][2]["plan"],
             ),
+            sample_block("Qwen3-8B-Base + LoRA", qwen_eval["preview"][0]["prompt"], qwen_eval["preview"][0]["generated"]),
         ]
     )
 
@@ -426,6 +450,7 @@ def main() -> None:
         "Более частая в корпусе схема ABAB ABAB не дала улучшения: малой decoder-only модели оказалось трудно удерживать рифму через строку.",
         "Предобучение на полных стихах улучшило next-token objective, но ухудшило целевую constrained-generation задачу; этот отрицательный результат важен сам по себе.",
         "Planner-guided архитектура оказалась лучше staged-подхода, но не превзошла строгий baseline, что указывает на недостаточную силу planner-а при отсутствии общего языкового фундамента.",
+        "Контринтуитивно, сильная base-модель Qwen3-8B-Base после LoRA-дообучения не превзошла scratch-baseline: она почти идеально удерживала длину, но почти полностью провалила рифму и схему AABB CCDD.",
         "Главное ограничение эксперимента состоит в том, что модель никогда не видела большого общего корпуса русского языка; именно это, вероятно, является основной причиной слабой семантики и появления псевдослов.",
     ]
 
@@ -551,7 +576,8 @@ def main() -> None:
         В работе исследуется, насколько далеко можно продвинуться в задаче продолжения русскоязычного стихотворения,
         если жестко запретить использование готовой базовой языковой модели и обучать decoder-only Transformer с нуля
         только на поэтическом корпусе. Основной фокус эксперимента — конфликт между формальными ограничениями
-        (длина, рифма, схема строфы) и семантической/языковой естественностью.
+        (длина, рифма, схема строфы) и семантической/языковой естественностью. На финальном этапе этот scratch-подход
+        был также сопоставлен с сильной base-моделью <code>Qwen3-8B-Base</code>, дообученной на том же корпусе.
       </p>
 
       <div class="meta">
@@ -568,7 +594,9 @@ def main() -> None:
         однако отсутствие общего языкового pretraining существенно ограничивает связность, словарь и естественность текста.
         Наилучший результат по совокупности формальных метрик был достигнут узкой 8-строчной постановкой <code>AABB CCDD</code>
         на quality-filtered корпусе. Более частая схема <code>ABAB ABAB</code>, staged-подход с предобучением на полных стихах и
-        двухшаговая planner-guided архитектура не улучшили baseline.
+        двухшаговая planner-guided архитектура не улучшили baseline. Дополнительное сравнение с <code>Qwen3-8B-Base</code>
+        показало, что сильная base-модель после LoRA-дообучения лучше удерживает общую языковую форму, но без специального
+        objective не усваивает строгую рифмованную схему и проигрывает scratch-baseline по целевой метрике.
       </p>
 
       <h2>1. Постановка задачи</h2>
@@ -764,11 +792,66 @@ def main() -> None:
         однако также не обошла baseline.
       </p>
 
-      <h3>5.3. Качественный анализ генераций</h3>
+      <h3>5.3. Сравнение со strong base model</h3>
+      <p>
+        После завершения scratch-линейки был проведен отдельный контрольный эксперимент с <code>Qwen3-8B-Base</code>,
+        дообученной методом LoRA на том же quality-filtered корпусе и под ту же постановку <code>AABB CCDD</code>.
+        Этот шаг был важен для проверки естественной гипотезы: не является ли основной предел scratch-подхода просто
+        отсутствием большого языкового фундамента.
+      </p>
+
+      <div class="figure">
+        {{ base_compare_svg | safe }}
+        <div class="caption">
+          Рисунок 5. Формальное качество лучшего scratch-baseline и <code>Qwen3-8B-Base</code> после LoRA-дообучения.
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Модель</th>
+            <th>Лучший eval_loss</th>
+            <th>Ровно 8 строк</th>
+            <th>Рифма 1–2</th>
+            <th>Полная схема AABB CCDD</th>
+            <th>Интерпретация</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Scratch AABB CCDD</td>
+            <td>{{ "%.4f"|format(exp_rows[0].best_val) }}</td>
+            <td>{{ "%.4f"|format(baseline_eval["exact_8_lines_rate"]) }}</td>
+            <td>{{ "%.4f"|format(baseline_eval["second_line_rhyme_rate"]) }}</td>
+            <td>{{ "%.4f"|format(baseline_eval["aabb_ccdd_rate"]) }}</td>
+            <td>Лучшая модель по формальным ограничениям внутри scratch-эксперимента.</td>
+          </tr>
+          <tr>
+            <td>Qwen3-8B-Base + LoRA</td>
+            <td>{{ "%.4f"|format(qwen_best_eval_loss) }}</td>
+            <td>{{ "%.4f"|format(qwen_eval["exact_8_lines_rate"]) }}</td>
+            <td>{{ "%.4f"|format(qwen_eval["second_line_rhyme_rate"]) }}</td>
+            <td>{{ "%.4f"|format(qwen_eval["aabb_ccdd_rate"]) }}</td>
+            <td>Почти идеально удерживает длину, но практически не усваивает рифмовую схему в текущем формате SFT.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        Этот результат оказался контринтуитивным, но методологически очень важным. В нашей постановке сильная base-модель
+        проиграла узкой scratch-модели именно по целевой задаче. Иными словами, общий языковой prior сам по себе не
+        гарантирует успех, если objective не заставляет модель считать рифму и строфическую схему обязательными.
+        Scratch-baseline хуже по общей языковой культуре, но лучше специализирован на локальной рифмованной форме.
+      </p>
+
+      <h3>5.4. Качественный анализ генераций</h3>
       <p>
         Формальные метрики не исчерпывают качества поэтического текста. Ниже приведены характерные примеры генерации.
         Видно, что даже лучшая модель нередко удерживает схему и длину ценой семантической рыхлости, а planner-guided
         ветка в текущем виде способна навязывать структуру, но иногда генерирует псевдослова и распадающийся синтаксис.
+        Генерация <code>Qwen3-8B-Base</code> демонстрирует обратную картину: длина удерживается уверенно, но сама рифма
+        и целевая схема почти не соблюдаются.
       </p>
       <div class="sample-grid">
         {{ examples_html | safe }}
@@ -781,6 +864,13 @@ def main() -> None:
         даже достаточно большой в абсолютных числах, остается слишком малым и слишком специализированным, чтобы заменить
         общий языковой pretraining. Модель учится рифмовать, завершать строки и имитировать поэтическую поверхность,
         но не получает достаточного фундамента для устойчивой семантической композиции.
+      </p>
+      <p>
+        Одновременно сравнение с <code>Qwen3-8B-Base</code> показывает, что и обратный тезис в простой форме неверен:
+        наличие сильного языкового фундамента еще не означает автоматического решения задачи. При стандартном completion-style
+        SFT base-модель охотно пишет восьмистрочные тексты, но не воспринимает рифму как жесткое ограничение. Следовательно,
+        дальнейшее движение должно идти не только в сторону более сильной базы, но и в сторону более подходящего обучающего
+        сигнала для поэтической формы.
       </p>
       <p>
         Planner-guided архитектура была введена именно для ослабления нагрузки на генератор: предполагалось, что если
@@ -844,11 +934,15 @@ def main() -> None:
         loss_svg=loss_svg,
         planner_loss_svg=planner_loss_svg,
         metric_svg=metric_svg,
+        base_compare_svg=base_compare_svg,
         corpus_svg=corpus_svg,
         prehistory_rows=prehistory_rows,
         exp_rows=exp_rows,
         examples_html=examples_html,
         conclusions=conclusions,
+        qwen_best_eval_loss=qwen_summary["best_metric"],
+        baseline_eval=baseline_eval,
+        qwen_eval=qwen_eval,
     )
 
     OUTPUT_HTML.write_text(html, encoding="utf-8")
