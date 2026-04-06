@@ -1,0 +1,30 @@
+{
+  "dataset_dir": "data/processed",
+  "tokenizer_model": "artifacts/tokenizer/poetry.model",
+  "out_dir": "artifacts/checkpoints/tiny_cpu",
+  "block_size": 256,
+  "batch_size": 8,
+  "gradient_accumulation_steps": 1,
+  "max_iters": 200,
+  "eval_interval": 50,
+  "eval_steps": 20,
+  "learning_rate": 0.0003,
+  "weight_decay": 0.1,
+  "beta1": 0.9,
+  "beta2": 0.95,
+  "grad_clip": 1.0,
+  "warmup_iters": 20,
+  "device": "cpu",
+  "dtype": "float32",
+  "compile": false,
+  "seed": 1337,
+  "model": {
+    "vocab_size": 16000,
+    "block_size": 256,
+    "n_layer": 4,
+    "n_head": 4,
+    "n_embd": 256,
+    "dropout": 0.1,
+    "bias": true
+  }
+}
