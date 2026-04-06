@@ -825,3 +825,34 @@ Suggested run command on the remote host:
 
 If access from the local machine is needed, tunnel it with SSH:
 - `ssh -L 7860:127.0.0.1:7860 angel@localhost -p 2222`
+
+## GitHub repo
+
+The project was converted into a git repository and pushed to GitHub:
+
+- repo URL: `https://github.com/huilo1/poetry-lm-experiment`
+
+Important repository decisions:
+- large data and artifacts are excluded via `.gitignore`
+- the repo contains:
+  - source code
+  - training / preprocessing scripts
+  - deployment assets
+  - experiment notes in `HANDOFF.md`
+  - deployment instructions in `DEPLOY_AGENT.md`
+- the repo does **not** contain:
+  - raw datasets
+  - processed corpora
+  - checkpoints
+  - tokenized `.bin` files
+  - virtual environments
+
+Deploy-related files now present in the repo:
+- `scripts/inference_api.py`
+- `scripts/web_app.py`
+- `deploy/env/*.example`
+- `deploy/systemd/*.service`
+- `deploy/nginx/ebekkuev.runningdog.org.conf`
+- `deploy/scripts/install_gpu_inference_service.sh`
+- `deploy/scripts/install_web_stack.sh`
+- `DEPLOY_AGENT.md`
