@@ -1,0 +1,20 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: poetry-prod-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy-prod:
+    runs-on:
+      - self-hosted
+      - poetry
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run repo deploy instructions
+        run: bash deploy/deploy-prod.sh
