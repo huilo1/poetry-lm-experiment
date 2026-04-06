@@ -38,11 +38,13 @@ def _status_badge(text: str, ok: bool) -> str:
 def model_status_markdown(device: str) -> str:
     rows: list[str] = []
     for spec in model_specs():
-        checkpoint_exists = spec.checkpoint.exists()
+        checkpoint_exists = all(path.exists() for path in spec.all_checkpoints())
         tokenizer_exists = spec.tokenizer.exists()
         ok = checkpoint_exists and tokenizer_exists
         status = _status_badge("ready", True) if ok else _status_badge("pending", False)
-        checkpoint_text = html.escape(str(spec.checkpoint))
+        checkpoint_text = "<br>".join(
+            html.escape(str(path)) for path in spec.all_checkpoints()
+        )
         tokenizer_text = html.escape(str(spec.tokenizer))
         note = html.escape(spec.note)
         rows.append(
@@ -77,23 +79,38 @@ def generate_all(prompt: str, temperature: float, top_k: int, device: str):
 
     outputs: list[str] = []
     for spec in model_specs():
-        if not spec.checkpoint.exists():
+        if not all(path.exists() for path in spec.all_checkpoints()):
             outputs.append("Чекпойнт еще не готов.")
             continue
         if not spec.tokenizer.exists():
             outputs.append("Tokenizer не найден.")
             continue
         try:
-            bundle = load_bundle(spec.checkpoint, spec.tokenizer, device=device)
-            outputs.append(
-                generate_text(
-                    bundle=bundle,
+            if spec.is_planner_guided:
+                from poetry_lm.inference import generate_text_with_planner
+
+                planner_bundle = load_bundle(spec.planner_checkpoint, spec.tokenizer, device=device)
+                generator_bundle = load_bundle(spec.checkpoint, spec.tokenizer, device=device)
+                _, output = generate_text_with_planner(
+                    planner_bundle=planner_bundle,
+                    generator_bundle=generator_bundle,
                     prompt=prompt,
                     max_new_tokens=MAX_NEW_TOKENS,
                     temperature=float(temperature),
                     top_k=int(top_k),
                 )
-            )
+                outputs.append(output)
+            else:
+                bundle = load_bundle(spec.checkpoint, spec.tokenizer, device=device)
+                outputs.append(
+                    generate_text(
+                        bundle=bundle,
+                        prompt=prompt,
+                        max_new_tokens=MAX_NEW_TOKENS,
+                        temperature=float(temperature),
+                        top_k=int(top_k),
+                    )
+                )
         except Exception as exc:  # pragma: no cover - UI runtime safety
             outputs.append(f"Ошибка инференса: {exc}")
 
@@ -111,7 +128,7 @@ def build_demo(device: str) -> gr.Blocks:
         gr.Markdown(
             """
             # Poetry LM Compare
-            Сравнение трех текущих веток генерации по одной первой строке.
+            Сравнение трех актуальных веток генерации по одной первой строке.
             """,
             elem_classes=["poetry-shell"],
         )
@@ -160,8 +177,8 @@ def build_demo(device: str) -> gr.Blocks:
                 elem_classes=["poetry-out"],
                 buttons=["copy"],
             )
-            output_staged = gr.Textbox(
-                label="Stage1 -> Stage2 current",
+            output_planner = gr.Textbox(
+                label="AABB planner-guided",
                 lines=18,
                 max_lines=24,
                 elem_classes=["poetry-out"],
@@ -174,7 +191,7 @@ def build_demo(device: str) -> gr.Blocks:
             elem_classes=["poetry-note"],
         )
 
-        outputs = [status, output_aabb, output_abab, output_staged]
+        outputs = [status, output_aabb, output_abab, output_planner]
         generate_btn.click(
             fn=generate_all,
             inputs=[prompt, temperature, top_k, device_state],

@@ -807,7 +807,20 @@ Current UI behavior:
 - outputs:
   - `AABB CCDD baseline`
   - `ABAB ABAB branch`
-  - `Stage1 -> Stage2 current`
+  - `AABB planner-guided`
+
+UI / API registry update:
+- the failed staged branch was removed from the active comparison UI
+- the new planner-guided branch was added instead
+- this required changes in:
+  - `src/poetry_lm/model_registry.py`
+  - `scripts/inference_api.py`
+  - `scripts/web_ui.py`
+  - `scripts/web_app.py`
+- model registry now supports multi-checkpoint specs:
+  - generator checkpoint
+  - optional planner checkpoint
+- the public web app status cards now show both checkpoints for planner-guided models
 
 Important runtime decision:
 - if `--device auto` is used and a `python scripts/train.py` process is detected, the UI falls back to `cpu`
@@ -856,3 +869,164 @@ Deploy-related files now present in the repo:
 - `deploy/scripts/install_gpu_inference_service.sh`
 - `deploy/scripts/install_web_stack.sh`
 - `DEPLOY_AGENT.md`
+
+## Final staged result
+
+The staged branch finished fully and produced a useful negative result.
+
+Stage 1:
+- checkpoint dir: `artifacts/checkpoints/host_5060_fullpoem_20m_stage1`
+- best / final validation loss observed at the end: about `3.4233`
+
+Stage 2:
+- checkpoint dir: `artifacts/checkpoints/host_5060_aabb_qf2_stage2_from_fullpoem_20m`
+- best validation loss: `2.6673` at `iter 5000`
+- final validation loss: `2.6787`
+- eval file: `artifacts/checkpoints/host_5060_aabb_qf2_stage2_from_fullpoem_20m/best.eval8.json`
+
+Stage 2 eval on 300 test prompts:
+- `exact_8_lines_rate = 0.9867`
+- `second_line_rhyme_rate = 0.58`
+- `aabb_ccdd_rate = 0.1567`
+
+Comparison against the current AABB baseline:
+- baseline:
+  - `exact_8_lines_rate = 0.9967`
+  - `second_line_rhyme_rate = 0.76`
+  - `aabb_ccdd_rate = 0.4133`
+- staged:
+  - `0.9867 / 0.58 / 0.1567`
+
+Conclusion:
+- staged pretraining on full poems improved `val_loss`
+- but it **hurt** the actual constrained 8-line rhymed generation task
+- this is an important negative result for the paper
+
+## Ending planner branch
+
+A new experimental branch was implemented to split the task into:
+1. planning endings for lines `2 / 4 / 6 / 8`
+2. generating the poem conditioned on those planned endings
+
+Core idea:
+- planner predicts target end words from the first line only
+- generator receives those planned endings before `<GEN>`
+- this is a real architectural change, not a decode-time reranker
+
+New tokenizer modes and control tokens:
+- file: `src/poetry_lm/tokenizer.py`
+- new modes:
+  - `planner_8line_aabb_ccdd`
+  - `structured_8line_aabb_ccdd_plan`
+- new tokens:
+  - `<PLAN>`
+  - `<E2>`
+  - `<E4>`
+  - `<E6>`
+  - `<E8>`
+
+New helper modules:
+- `src/poetry_lm/planning.py`
+- `src/poetry_lm/inference.py` now supports:
+  - `generate_plan(...)`
+  - `generate_text(..., plan_endings=...)`
+  - `generate_text_with_planner(...)`
+
+New scripts:
+- dataset builder:
+  - `scripts/build_aabb_plan_datasets.py`
+- planner inference:
+  - `scripts/generate_with_plan.py`
+- planner eval:
+  - `scripts/evaluate_plan_endings.py`
+- end-to-end planner + generator eval:
+  - `scripts/evaluate_planned_8line.py`
+
+New configs:
+- full runs:
+  - `configs/host_5060_aabb_end_planner_12m.json`
+  - `configs/host_5060_aabb_with_plan_20m.json`
+- smoke runs:
+  - `configs/smoke_aabb_end_planner.json`
+  - `configs/smoke_aabb_with_plan.json`
+
+New intermediate datasets:
+- planner dataset target dir:
+  - `data/processed_aabb8_plan`
+- generator-with-plan target dir:
+  - `data/processed_aabb8_planned`
+
+Smoke verification already completed:
+- built tiny datasets:
+  - `data/processed_aabb8_plan_smoke`
+  - `data/processed_aabb8_planned_smoke`
+- trained smoke tokenizer:
+  - `artifacts/tokenizer_aabb_plan_smoke/poetry.model`
+- packed smoke `.bin` files for both datasets
+- trained smoke planner checkpoint:
+  - `artifacts/checkpoints/smoke_aabb_end_planner/best.pt`
+- trained smoke generator checkpoint:
+  - `artifacts/checkpoints/smoke_aabb_with_plan/best.pt`
+- verified end-to-end command:
+  - `PYTHONPATH=src python scripts/generate_with_plan.py ...`
+
+Important note from smoke:
+- the planner can emit incomplete plans early in training
+- the inference path was adjusted so the generator can still run with partially filled `<E2>/<E4>/<E6>/<E8>`
+- quality of smoke outputs is meaningless; the point is that the full pipeline is now working
+
+Recommended full pipeline commands:
+
+1. Build planner and generator datasets from the current best strict corpus:
+- `PYTHONPATH=src python scripts/build_aabb_plan_datasets.py --input-dir data/processed_aabb8_qf2 --planner-out-dir data/processed_aabb8_plan --generator-out-dir data/processed_aabb8_planned`
+
+2. Train a shared tokenizer on both branches:
+- `PYTHONPATH=src python scripts/train_tokenizer.py --input data/processed_aabb8_plan/train.jsonl.gz data/processed_aabb8_planned/train.jsonl.gz --tmp-text data/processed_aabb8_plan/tokenizer_input.txt --model-prefix artifacts/tokenizer_aabb_plan/poetry --vocab-size 16000`
+
+3. Pack planner tokens:
+- `PYTHONPATH=src python scripts/prepare_tokens.py --dataset-dir data/processed_aabb8_plan --tokenizer-model artifacts/tokenizer_aabb_plan/poetry.model`
+
+4. Pack generator-with-plan tokens:
+- `PYTHONPATH=src python scripts/prepare_tokens.py --dataset-dir data/processed_aabb8_planned --tokenizer-model artifacts/tokenizer_aabb_plan/poetry.model`
+
+5. Train planner:
+- `PYTHONPATH=src python scripts/train.py --config configs/host_5060_aabb_end_planner_12m.json`
+
+6. Evaluate planner endings:
+- `PYTHONPATH=src python scripts/evaluate_plan_endings.py --checkpoint artifacts/checkpoints/host_5060_aabb_end_planner_12m/best.pt --tokenizer-model artifacts/tokenizer_aabb_plan/poetry.model --test-file data/processed_aabb8_plan/test.jsonl.gz --device cuda --limit 300`
+
+7. Train generator with plan:
+- `PYTHONPATH=src python scripts/train.py --config configs/host_5060_aabb_with_plan_20m.json`
+
+8. Evaluate planner-guided full generation:
+- `PYTHONPATH=src python scripts/evaluate_planned_8line.py --planner-checkpoint artifacts/checkpoints/host_5060_aabb_end_planner_12m/best.pt --generator-checkpoint artifacts/checkpoints/host_5060_aabb_with_plan_20m/best.pt --tokenizer-model artifacts/tokenizer_aabb_plan/poetry.model --test-file data/processed_aabb8_planned/test.jsonl.gz --device cuda --limit 300`
+
+Full run result on the GPU host:
+
+Planner:
+- checkpoint dir: `artifacts/checkpoints/host_5060_aabb_end_planner_12m`
+- best validation loss: `2.3660` at `iter 3000`
+- eval:
+  - `ending_exact_match_rate = 0.0158`
+  - `ending_rhyme_tail_match_rate = 0.1525`
+
+Generator with plan:
+- checkpoint dir: `artifacts/checkpoints/host_5060_aabb_with_plan_20m`
+- best validation loss: `2.5538` at `iter 12000`
+- eval:
+  - `exact_8_lines_rate = 0.9967`
+  - `second_line_rhyme_rate = 0.63`
+  - `aabb_ccdd_rate = 0.3167`
+
+Comparison versus the current strict AABB baseline:
+- baseline:
+  - `exact_8_lines_rate = 0.9967`
+  - `second_line_rhyme_rate = 0.76`
+  - `aabb_ccdd_rate = 0.4133`
+- planner-guided:
+  - `0.9967 / 0.63 / 0.3167`
+
+Conclusion:
+- planner-guided is clearly better than the failed staged branch
+- but it is still worse than the current AABB baseline
+- it keeps length just as well, but does not improve rhyme quality enough

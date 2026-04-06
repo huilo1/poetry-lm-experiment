@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 import uvicorn
 
-from poetry_lm.inference import generate_text, load_bundle, resolve_device
+from poetry_lm.inference import generate_text, generate_text_with_planner, load_bundle, resolve_device
 from poetry_lm.model_registry import model_map, model_specs
 
 
@@ -44,14 +44,16 @@ def build_app(device: str) -> FastAPI:
     def health():
         items = []
         for spec in model_specs():
+            ready = all(path.exists() for path in spec.all_checkpoints()) and spec.tokenizer.exists()
             items.append(
                 {
                     "key": spec.key,
                     "title": spec.title,
                     "note": spec.note,
                     "checkpoint": str(spec.checkpoint),
+                    "planner_checkpoint": str(spec.planner_checkpoint) if spec.planner_checkpoint else None,
                     "tokenizer": str(spec.tokenizer),
-                    "ready": spec.checkpoint.exists() and spec.tokenizer.exists(),
+                    "ready": ready,
                 }
             )
         return {
@@ -69,19 +71,35 @@ def build_app(device: str) -> FastAPI:
             raise HTTPException(status_code=404, detail="unknown model key")
         if not spec.checkpoint.exists():
             raise HTTPException(status_code=409, detail="checkpoint not ready")
+        if spec.planner_checkpoint is not None and not spec.planner_checkpoint.exists():
+            raise HTTPException(status_code=409, detail="planner checkpoint not ready")
         if not spec.tokenizer.exists():
             raise HTTPException(status_code=500, detail="tokenizer missing")
 
-        bundle = load_bundle(spec.checkpoint, spec.tokenizer, device=resolved_device)
         try:
-            output = generate_text(
-                bundle=bundle,
-                prompt=request.prompt,
-                max_new_tokens=MAX_NEW_TOKENS,
-                temperature=request.temperature,
-                top_k=request.top_k,
-            )
+            if spec.is_planner_guided:
+                planner_bundle = load_bundle(spec.planner_checkpoint, spec.tokenizer, device=resolved_device)
+                generator_bundle = load_bundle(spec.checkpoint, spec.tokenizer, device=resolved_device)
+                _, output = generate_text_with_planner(
+                    planner_bundle=planner_bundle,
+                    generator_bundle=generator_bundle,
+                    prompt=request.prompt,
+                    max_new_tokens=MAX_NEW_TOKENS,
+                    temperature=request.temperature,
+                    top_k=request.top_k,
+                )
+            else:
+                bundle = load_bundle(spec.checkpoint, spec.tokenizer, device=resolved_device)
+                output = generate_text(
+                    bundle=bundle,
+                    prompt=request.prompt,
+                    max_new_tokens=MAX_NEW_TOKENS,
+                    temperature=request.temperature,
+                    top_k=request.top_k,
+                )
         except RuntimeError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        except ValueError as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
         return {

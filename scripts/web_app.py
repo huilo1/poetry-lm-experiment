@@ -215,8 +215,9 @@ def build_index_html() -> str:
                   Эксперимент по обучению небольшой языковой модели с нуля только на корпусе русской поэзии.
                   Сначала была собрана и очищена выборка стихов, затем проверены несколько постановок задачи:
                   свободное продолжение, строгие 8 строк с рифмовкой `AABB CCDD`, альтернативная схема `ABAB ABAB`
-                  и staged-обучение через полные стихотворения. Ниже можно сравнить, как эти ветки продолжают
-                  стих по одной первой строке и какая из них лучше удерживает форму и рифму. Базовая архитектура:
+                  и двухшаговая planner-ветка, где сначала предсказываются окончания строк, а затем генерируется
+                  весь текст под этот план. Ниже можно сравнить, как эти ветки продолжают стих по одной первой
+                  строке и какая из них лучше удерживает форму и рифму. Базовая архитектура:
                   decoder-only Transformer с 8 слоями, 6 attention heads, скрытой размерностью 384 и контекстом 256 токенов.
                 </p>
               </div>
@@ -275,7 +276,12 @@ def build_index_html() -> str:
                   <div class="badge ${model.ready ? "ready" : "pending"}">${model.ready ? "ready" : "pending"}</div>
                   <h2 style="margin-top:12px">${model.title}</h2>
                   <p class="note">${model.note}</p>
-                  <div class="meta"><div><strong>checkpoint</strong><br><code>${model.checkpoint}</code></div></div>
+                  <div class="meta">
+                    ${model.planner_checkpoint
+                      ? `<div><strong>planner checkpoint</strong><br><code>${model.planner_checkpoint}</code></div>`
+                      : ""}
+                    <div style="${model.planner_checkpoint ? "margin-top:10px" : ""}"><strong>checkpoint</strong><br><code>${model.checkpoint}</code></div>
+                  </div>
                 </article>
               `).join("");
               resultsEl.innerHTML = models.map((model) => `

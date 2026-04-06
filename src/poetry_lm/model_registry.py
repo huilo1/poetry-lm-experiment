@@ -11,6 +11,17 @@ class ModelSpec:
     checkpoint: Path
     tokenizer: Path
     note: str
+    planner_checkpoint: Path | None = None
+
+    @property
+    def is_planner_guided(self) -> bool:
+        return self.planner_checkpoint is not None
+
+    def all_checkpoints(self) -> list[Path]:
+        paths = [self.checkpoint]
+        if self.planner_checkpoint is not None:
+            paths.insert(0, self.planner_checkpoint)
+        return paths
 
 
 MODEL_SPECS = [
@@ -29,11 +40,12 @@ MODEL_SPECS = [
         note="Сравнительная ветка с более частой схемой, но худшей рифмой через строку.",
     ),
     ModelSpec(
-        key="staged_current",
-        title="Stage1 -> Stage2 current",
-        checkpoint=Path("artifacts/checkpoints/host_5060_aabb_qf2_stage2_from_fullpoem_20m/best.pt"),
-        tokenizer=Path("artifacts/tokenizer_aabb8/poetry.model"),
-        note="Текущий staged run: сначала полные стихи, потом строгий AABB CCDD.",
+        key="aabb_planner_guided",
+        title="AABB planner-guided",
+        checkpoint=Path("artifacts/checkpoints/host_5060_aabb_with_plan_20m/best.pt"),
+        planner_checkpoint=Path("artifacts/checkpoints/host_5060_aabb_end_planner_12m/best.pt"),
+        tokenizer=Path("artifacts/tokenizer_aabb_plan/poetry.model"),
+        note="Новая ветка: planner сначала предсказывает окончания строк 2/4/6/8, затем generator пишет стих под этот план.",
     ),
 ]
 
