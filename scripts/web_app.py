@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 from textwrap import dedent
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException
@@ -13,6 +14,7 @@ import uvicorn
 
 
 DEFAULT_INFERENCE_API_BASE_URL = os.environ.get("INFERENCE_API_BASE_URL", "http://127.0.0.1:8001")
+ARTICLE_PATH = Path(__file__).resolve().parent.parent / "article" / "poetry_lm_experiment_report.html"
 
 
 class GenerateRequest(BaseModel):
@@ -90,6 +92,24 @@ def build_index_html() -> str:
               box-shadow: 0 14px 30px rgba(65, 42, 29, 0.06);
             }
             .panel { padding: 20px; margin-bottom: 18px; }
+            .hero-links {
+              display: flex;
+              gap: 12px;
+              flex-wrap: wrap;
+              margin: 10px 0 18px;
+            }
+            .hero-link {
+              display: inline-flex;
+              align-items: center;
+              gap: 8px;
+              text-decoration: none;
+              border-radius: 14px;
+              padding: 12px 16px;
+              border: 1px solid var(--edge);
+              background: #fff7ee;
+              color: #6f3527;
+              font-weight: 700;
+            }
             .controls {
               display: grid;
               grid-template-columns: 1.9fr 0.8fr 0.8fr auto auto;
@@ -220,6 +240,9 @@ def build_index_html() -> str:
                   строке и какая из них лучше удерживает форму и рифму. Базовая архитектура:
                   decoder-only Transformer с 8 слоями, 6 attention heads, скрытой размерностью 384 и контекстом 256 токенов.
                 </p>
+                <div class="hero-links">
+                  <a class="hero-link" href="/article">Открыть статью</a>
+                </div>
               </div>
               <img class="portrait" src="/static/khanapi-ebekkuev.jpg" alt="Ханапи Эбеккуев">
             </section>
@@ -365,6 +388,12 @@ def build_app(inference_api_base_url: str) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     async def index():
         return build_index_html()
+
+    @app.get("/article", response_class=HTMLResponse)
+    async def article():
+        if not ARTICLE_PATH.exists():
+            raise HTTPException(status_code=404, detail="article not found")
+        return ARTICLE_PATH.read_text(encoding="utf-8")
 
     @app.get("/api/health")
     async def api_health():

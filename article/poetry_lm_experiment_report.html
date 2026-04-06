@@ -1,0 +1,467 @@
+
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Обучение с нуля русской поэтической модели продолжения стихов</title>
+  <style>
+    :root {
+      --bg: #f6f1e8;
+      --paper: #fffdf8;
+      --ink: #1f2937;
+      --muted: #5b6473;
+      --edge: #ddd1c3;
+      --accent: #9f3925;
+      --accent-2: #2f6f73;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: linear-gradient(180deg, #eee4d6 0%, var(--bg) 100%);
+      color: var(--ink);
+      font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+      line-height: 1.55;
+    }
+    main {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 36px 20px 72px;
+    }
+    .paper {
+      background: var(--paper);
+      border: 1px solid var(--edge);
+      border-radius: 24px;
+      box-shadow: 0 20px 45px rgba(43, 31, 20, 0.08);
+      padding: 34px 34px 44px;
+    }
+    h1, h2, h3, h4 { line-height: 1.15; color: #18212c; }
+    h1 { font-size: 2.45rem; margin: 0 0 14px; letter-spacing: -0.03em; }
+    h2 { margin-top: 38px; font-size: 1.55rem; }
+    h3 { margin-top: 28px; font-size: 1.18rem; }
+    p, li { font-size: 1.03rem; }
+    .lead { font-size: 1.12rem; color: var(--muted); max-width: 900px; }
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin: 22px 0 10px;
+    }
+    .meta-card, .box {
+      background: #fffaf2;
+      border: 1px solid var(--edge);
+      border-radius: 18px;
+      padding: 14px 16px;
+    }
+    .meta-card strong { display: block; margin-bottom: 6px; font-size: 0.9rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0 10px;
+      font-size: 0.98rem;
+    }
+    th, td {
+      border-bottom: 1px solid #eadfd2;
+      padding: 10px 10px;
+      vertical-align: top;
+      text-align: left;
+    }
+    th { color: var(--muted); font-weight: 700; }
+    .figure {
+      margin: 22px 0;
+      padding: 14px;
+      border: 1px solid var(--edge);
+      border-radius: 18px;
+      background: #fff;
+    }
+    .caption {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+    .sample-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-top: 12px;
+    }
+    .sample-card {
+      border: 1px solid var(--edge);
+      border-radius: 18px;
+      padding: 14px;
+      background: #fffcf7;
+    }
+    .sample-card h4 { margin: 0 0 8px; }
+    .sample-card pre {
+      margin: 10px 0 0;
+      white-space: pre-wrap;
+      font-family: "IBM Plex Mono", "Fira Code", monospace;
+      font-size: 0.92rem;
+      line-height: 1.45;
+      color: #1d2430;
+    }
+    .sample-prompt, .sample-plan { color: var(--muted); font-size: 0.95rem; }
+    .conclusion-list li { margin-bottom: 8px; }
+    .small { color: var(--muted); font-size: .92rem; }
+    code { font-family: "IBM Plex Mono", "Fira Code", monospace; font-size: 0.93em; }
+    @media (max-width: 860px) {
+      .meta, .sample-grid { grid-template-columns: 1fr; }
+      .paper { padding: 22px 18px 32px; }
+      h1 { font-size: 2rem; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <article class="paper">
+      <h1>Обучение с нуля русской поэтической модели продолжения стихов по первой строке</h1>
+      <p class="lead">
+        В работе исследуется, насколько далеко можно продвинуться в задаче продолжения русскоязычного стихотворения,
+        если жестко запретить использование готовой базовой языковой модели и обучать decoder-only Transformer с нуля
+        только на поэтическом корпусе. Основной фокус эксперимента — конфликт между формальными ограничениями
+        (длина, рифма, схема строфы) и семантической/языковой естественностью.
+      </p>
+
+      <div class="meta">
+        <div class="meta-card"><strong>Язык</strong>Русский</div>
+        <div class="meta-card"><strong>Вход</strong>Одна первая строка</div>
+        <div class="meta-card"><strong>Целевая форма</strong>8 строк, схема <code>AABB CCDD</code></div>
+      </div>
+
+      <h2>Аннотация</h2>
+      <p>
+        Был построен полный экспериментальный цикл: извлечение и очистка корпуса русской поэзии, разметка рифмовки
+        и ударений, обучение нескольких генеративных моделей с нуля, а также сравнение альтернативных постановок задачи.
+        Показано, что формальные свойства стиха частично поддаются обучению даже при сравнительно малом размере модели,
+        однако отсутствие общего языкового pretraining существенно ограничивает связность, словарь и естественность текста.
+        Наилучший результат по совокупности формальных метрик был достигнут узкой 8-строчной постановкой <code>AABB CCDD</code>
+        на quality-filtered корпусе. Более частая схема <code>ABAB ABAB</code>, staged-подход с предобучением на полных стихах и
+        двухшаговая planner-guided архитектура не улучшили baseline.
+      </p>
+
+      <h2>1. Постановка задачи</h2>
+      <p>
+        Исходная цель проекта заключалась в проверке следующей гипотезы: можно ли обучить небольшую нейросетевую модель с нуля,
+        используя только русскоязычный поэтический корпус, так чтобы по одной строке она продолжала стихотворение в формально
+        заданной структуре. Принципиальное ограничение эксперимента состояло в отказе от любых готовых русских или многоязычных
+        базовых языковых моделей.
+      </p>
+      <p>
+        На раннем этапе была проверена свободная постановка задачи продолжения стиха, после чего эксперимент был сужен до
+        более контролируемого сценария: входом служит одна строка, выходом — стихотворение ровно из восьми строк с
+        рифмовкой <code>AABB CCDD</code>. Именно эта постановка оказалась наиболее удобной для количественной оценки и
+        для сравнения архитектурных и корпусных решений.
+      </p>
+
+      <h2>2. Данные и подготовка корпуса</h2>
+      <h3>2.1. Исходный корпус</h3>
+      <p>
+        Базой послужил большой русскоязычный поэтический корпус, из которого после первичной фильтрации было оставлено
+        1 219 940 текстов. На этапе грубой эвристической разметки среди них удалось выделить
+        852 200 текстов с quatrain-схемой <code>ABAB</code>, 315 152 — со схемой <code>AABB</code>
+        и 52 588 — со схемой <code>ABBA</code>.
+      </p>
+      <div class="box small">
+        Первичный тренировочный массив содержал 219 388 601 токенов, что достаточно для базового
+        специализированного language modeling, но существенно меньше типичных объемов общего языкового pretraining.
+      </div>
+
+      <div class="figure">
+        <svg viewBox="0 0 760 320" role="img" aria-label="Сжатие корпуса при переходе к более строгой постановке"><rect width="100%" height="100%" fill="white" rx="16" /><text x="180" y="20" font-size="16" font-weight="700" fill="#1f2937">Сжатие корпуса при переходе к более строгой постановке</text><text x="170" y="72.4" text-anchor="end" font-size="12" fill="#374151">processed: rows_kept</text><rect x="180" y="45.2" width="556.0" height="34.7" fill="#bb4d34" rx="5" /><text x="744.0" y="72.4" font-size="11" fill="#6b7280">1219940.00</text><text x="170" y="134.4" text-anchor="end" font-size="12" fill="#374151">processed_rhyme_focus: rows_written</text><rect x="180" y="107.2" width="430.9" height="34.7" fill="#bb4d34" rx="5" /><text x="618.9" y="134.4" font-size="11" fill="#6b7280">945456.00</text><text x="170" y="196.4" text-anchor="end" font-size="12" fill="#374151">processed_aabb8: windows_kept</text><rect x="180" y="169.2" width="40.6" height="34.7" fill="#bb4d34" rx="5" /><text x="228.6" y="196.4" font-size="11" fill="#6b7280">89191.00</text><text x="170" y="258.4" text-anchor="end" font-size="12" fill="#374151">processed_aabb8_qf2: rows_kept</text><rect x="180" y="231.2" width="34.0" height="34.7" fill="#bb4d34" rx="5" /><text x="222.0" y="258.4" font-size="11" fill="#6b7280">74584.00</text></svg>
+        <div class="caption">
+          Рисунок 1. Уменьшение объема доступных данных при переходе от общего поэтического корпуса к строгой постановке
+          <code>AABB CCDD</code> и дальнейшей quality-фильтрации.
+        </div>
+      </div>
+
+      <h3>2.2. Этапы сужения корпуса</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Корпус</th>
+            <th>Назначение</th>
+            <th>Размер</th>
+            <th>Комментарий</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>processed</code></td>
+            <td>Общий baseline на поэзии</td>
+            <td>1 219 940</td>
+            <td>Широкий корпус с разметкой quatrain-схем.</td>
+          </tr>
+          <tr>
+            <td><code>processed_rhyme_focus</code></td>
+            <td>Усиление рифмы второй строки</td>
+            <td>945 456</td>
+            <td>Только <code>AABB</code> + oversampling первых двух строк.</td>
+          </tr>
+          <tr>
+            <td><code>processed_aabb8</code></td>
+            <td>Строгая 8-строчная задача</td>
+            <td>89 191</td>
+            <td>8-строчные окна с проверенной схемой <code>AABB CCDD</code>.</td>
+          </tr>
+          <tr>
+            <td><code>processed_aabb8_qf2</code></td>
+            <td>Основной корпус финального baseline</td>
+            <td>74 584</td>
+            <td>Дополнительная quality-фильтрация: дубликаты, дешевые рифмы, разрывные фрагменты, сбои метра.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        Quality filter v2 был нацелен не на литературную оценку текста, а на снижение task-specific шума: убирались
+        окна с явными повторными строками, одинаковыми последними словами в рифмующихся парах, фрагментными концовками,
+        сильными межпарными рифмовыми коллизиями и грубыми просодическими перекосами.
+      </p>
+
+      <h2>3. Архитектура и схема обучения</h2>
+      <p>
+        Во всех основных ветках использовалась одна базовая архитектура: <code>decoder-only Transformer</code> с обучением с нуля.
+        Для основной 8-строчной модели конфигурация составляла 8 слоев самовнимания, 6 attention heads, скрытую размерность 384,
+        контекст 256 токенов и словарь SentencePiece unigram на 16 000 токенов. Структурные токены задавали длину,
+        схему строфы и позицию строки внутри восьмистрочника.
+      </p>
+      <p>
+        Были протестированы четыре основные ветки: (1) строгий baseline <code>AABB CCDD</code>, (2) альтернативная схема
+        <code>ABAB ABAB</code>, (3) staged-обучение через предобучение на полных стихах и последующее дообучение на
+        строгой задаче, (4) planner-guided архитектура, в которой сначала предсказываются окончания строк 2/4/6/8,
+        а затем генератор строит весь восьмистрочник под этот план.
+      </p>
+
+      <div class="figure">
+        <svg viewBox="0 0 760 340" role="img" aria-label="Кривые валидационной потери для основных 8-строчных веток"><rect width="100%" height="100%" fill="white" rx="16" /><text x="56" y="20" font-size="16" font-weight="700" fill="#1f2937">Кривые валидационной потери для основных 8-строчных веток</text><line x1="56" y1="298.0" x2="740" y2="298.0" stroke="#e5e7eb" /><text x="48" y="302.0" text-anchor="end" font-size="11" fill="#6b7280">1.69</text><line x1="56" y1="244.4" x2="740" y2="244.4" stroke="#e5e7eb" /><text x="48" y="248.4" text-anchor="end" font-size="11" fill="#6b7280">3.43</text><line x1="56" y1="190.8" x2="740" y2="190.8" stroke="#e5e7eb" /><text x="48" y="194.8" text-anchor="end" font-size="11" fill="#6b7280">5.18</text><line x1="56" y1="137.2" x2="740" y2="137.2" stroke="#e5e7eb" /><text x="48" y="141.2" text-anchor="end" font-size="11" fill="#6b7280">6.92</text><line x1="56" y1="83.6" x2="740" y2="83.6" stroke="#e5e7eb" /><text x="48" y="87.6" text-anchor="end" font-size="11" fill="#6b7280">8.66</text><line x1="56" y1="30.0" x2="740" y2="30.0" stroke="#e5e7eb" /><text x="48" y="34.0" text-anchor="end" font-size="11" fill="#6b7280">10.40</text><line x1="56.0" y1="30" x2="56.0" y2="298" stroke="#f3f4f6" /><text x="56.0" y="328" text-anchor="middle" font-size="11" fill="#6b7280">0</text><line x1="170.0" y1="30" x2="170.0" y2="298" stroke="#f3f4f6" /><text x="170.0" y="328" text-anchor="middle" font-size="11" fill="#6b7280">2000</text><line x1="284.0" y1="30" x2="284.0" y2="298" stroke="#f3f4f6" /><text x="284.0" y="328" text-anchor="middle" font-size="11" fill="#6b7280">4000</text><line x1="398.0" y1="30" x2="398.0" y2="298" stroke="#f3f4f6" /><text x="398.0" y="328" text-anchor="middle" font-size="11" fill="#6b7280">6000</text><line x1="512.0" y1="30" x2="512.0" y2="298" stroke="#f3f4f6" /><text x="512.0" y="328" text-anchor="middle" font-size="11" fill="#6b7280">8000</text><line x1="626.0" y1="30" x2="626.0" y2="298" stroke="#f3f4f6" /><text x="626.0" y="328" text-anchor="middle" font-size="11" fill="#6b7280">10000</text><line x1="740.0" y1="30" x2="740.0" y2="298" stroke="#f3f4f6" /><text x="740.0" y="328" text-anchor="middle" font-size="11" fill="#6b7280">12000</text><line x1="56" y1="298" x2="740" y2="298" stroke="#9ca3af" /><line x1="56" y1="30" x2="56" y2="298" stroke="#9ca3af" /><text x="380.0" y="338" text-anchor="middle" font-size="12" fill="#6b7280">Итерация</text><text x="16" y="170.0" transform="rotate(-90 16 170.0)" text-anchor="middle" font-size="12" fill="#6b7280">val_loss</text><line x1="560" y1="36" x2="578" y2="36" stroke="#bb4d34" stroke-width="3" /><text x="584" y="40" font-size="11" fill="#374151">AABB baseline</text><path d="M56.0,49.5 L84.5,230.5 L113.0,239.6 L141.5,246.0 L170.0,250.3 L198.5,253.4 L227.0,255.0 L255.5,256.8 L284.0,258.1 L312.5,259.4 L341.0,260.3 L369.5,261.1 L398.0,261.5 L426.5,262.1 L455.0,262.3 L483.5,262.9 L512.0,263.0 L540.5,262.7 L569.0,263.4 L597.5,263.7 L626.0,264.0 L654.5,264.5 L683.0,264.4 L711.5,264.3 L740.0,263.9" fill="none" stroke="#bb4d34" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" /><line x1="560" y1="54" x2="578" y2="54" stroke="#2f6f73" stroke-width="3" /><text x="584" y="58" font-size="11" fill="#374151">ABAB</text><path d="M56.0,48.5 L84.5,233.9 L113.0,243.1 L141.5,254.2 L170.0,261.8 L198.5,265.6 L227.0,268.1 L255.5,269.6 L284.0,270.6 L312.5,272.8 L341.0,272.9 L369.5,275.1 L398.0,274.8 L426.5,275.9 L455.0,275.6 L483.5,276.3 L512.0,277.1 L540.5,278.4 L569.0,278.7 L597.5,279.4 L626.0,279.1 L654.5,278.6 L683.0,278.5 L711.5,279.3 L740.0,279.5" fill="none" stroke="#2f6f73" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" /><line x1="560" y1="72" x2="578" y2="72" stroke="#5b8c49" stroke-width="3" /><text x="584" y="76" font-size="11" fill="#374151">Stage2</text><path d="M56.0,178.4 L84.5,265.1 L113.0,266.4 L141.5,266.4 L170.0,266.5 L198.5,266.6 L227.0,267.6 L255.5,267.3 L284.0,267.2 L312.5,267.4 L341.0,268.0 L369.5,267.1 L398.0,267.6" fill="none" stroke="#5b8c49" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" /><line x1="560" y1="90" x2="578" y2="90" stroke="#6b4f9d" stroke-width="3" /><text x="584" y="94" font-size="11" fill="#374151">Planner-guided</text><path d="M56.0,51.1 L84.5,234.5 L113.0,244.7 L141.5,252.9 L170.0,257.4 L198.5,261.1 L227.0,262.7 L255.5,264.5 L284.0,266.2 L312.5,266.5 L341.0,268.3 L369.5,268.0 L398.0,268.8 L426.5,269.5 L455.0,269.1 L483.5,270.1 L512.0,270.0 L540.5,270.7 L569.0,270.7 L597.5,271.2 L626.0,271.2 L654.5,271.4 L683.0,271.3 L711.5,271.3 L740.0,271.5" fill="none" stroke="#6b4f9d" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" /></svg>
+        <div class="caption">
+          Рисунок 2. Сопоставление кривых валидационной потери для основных 8-строчных веток.
+        </div>
+      </div>
+
+      <div class="figure">
+        <svg viewBox="0 0 760 340" role="img" aria-label="Вспомогательные ветки: предобучение на полных стихах и planner окончаний"><rect width="100%" height="100%" fill="white" rx="16" /><text x="56" y="20" font-size="16" font-weight="700" fill="#1f2937">Вспомогательные ветки: предобучение на полных стихах и planner окончаний</text><line x1="56" y1="298.0" x2="740" y2="298.0" stroke="#e5e7eb" /><text x="48" y="302.0" text-anchor="end" font-size="11" fill="#6b7280">1.76</text><line x1="56" y1="244.4" x2="740" y2="244.4" stroke="#e5e7eb" /><text x="48" y="248.4" text-anchor="end" font-size="11" fill="#6b7280">3.52</text><line x1="56" y1="190.8" x2="740" y2="190.8" stroke="#e5e7eb" /><text x="48" y="194.8" text-anchor="end" font-size="11" fill="#6b7280">5.27</text><line x1="56" y1="137.2" x2="740" y2="137.2" stroke="#e5e7eb" /><text x="48" y="141.2" text-anchor="end" font-size="11" fill="#6b7280">7.03</text><line x1="56" y1="83.6" x2="740" y2="83.6" stroke="#e5e7eb" /><text x="48" y="87.6" text-anchor="end" font-size="11" fill="#6b7280">8.79</text><line x1="56" y1="30.0" x2="740" y2="30.0" stroke="#e5e7eb" /><text x="48" y="34.0" text-anchor="end" font-size="11" fill="#6b7280">10.55</text><line x1="56.0" y1="30" x2="56.0" y2="298" stroke="#f3f4f6" /><text x="56.0" y="328" text-anchor="middle" font-size="11" fill="#6b7280">0</text><line x1="170.0" y1="30" x2="170.0" y2="298" stroke="#f3f4f6" /><text x="170.0" y="328" text-anchor="middle" font-size="11" fill="#6b7280">2000</text><line x1="284.0" y1="30" x2="284.0" y2="298" stroke="#f3f4f6" /><text x="284.0" y="328" text-anchor="middle" font-size="11" fill="#6b7280">4000</text><line x1="398.0" y1="30" x2="398.0" y2="298" stroke="#f3f4f6" /><text x="398.0" y="328" text-anchor="middle" font-size="11" fill="#6b7280">6000</text><line x1="512.0" y1="30" x2="512.0" y2="298" stroke="#f3f4f6" /><text x="512.0" y="328" text-anchor="middle" font-size="11" fill="#6b7280">8000</text><line x1="626.0" y1="30" x2="626.0" y2="298" stroke="#f3f4f6" /><text x="626.0" y="328" text-anchor="middle" font-size="11" fill="#6b7280">10000</text><line x1="740.0" y1="30" x2="740.0" y2="298" stroke="#f3f4f6" /><text x="740.0" y="328" text-anchor="middle" font-size="11" fill="#6b7280">12000</text><line x1="56" y1="298" x2="740" y2="298" stroke="#9ca3af" /><line x1="56" y1="30" x2="56" y2="298" stroke="#9ca3af" /><text x="380.0" y="338" text-anchor="middle" font-size="12" fill="#6b7280">Итерация</text><text x="16" y="170.0" transform="rotate(-90 16 170.0)" text-anchor="middle" font-size="12" fill="#6b7280">val_loss</text><line x1="560" y1="36" x2="578" y2="36" stroke="#7c3f58" stroke-width="3" /><text x="584" y="40" font-size="11" fill="#374151">Stage1 full poems</text><path d="M56.0,54.2 L84.5,204.2 L113.0,214.9 L141.5,222.1 L170.0,226.4 L198.5,229.6 L227.0,232.1 L255.5,234.6 L284.0,236.3 L312.5,237.9 L341.0,239.2 L369.5,240.8 L398.0,241.5 L426.5,242.3 L455.0,243.4 L483.5,243.5 L512.0,244.6 L540.5,245.5 L569.0,245.5 L597.5,246.1 L626.0,246.1 L654.5,246.9 L683.0,246.7 L711.5,246.6 L740.0,247.3" fill="none" stroke="#7c3f58" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" /><line x1="560" y1="54" x2="578" y2="54" stroke="#2563eb" stroke-width="3" /><text x="584" y="58" font-size="11" fill="#374151">Planner endings</text><path d="M56.0,48.5 L84.5,268.4 L113.0,273.5 L141.5,277.0 L170.0,278.7 L198.5,279.5 L227.0,279.5 L255.5,278.8 L284.0,278.2 L312.5,277.1 L341.0,276.6 L369.5,275.7 L398.0,275.2 L426.5,274.4 L455.0,273.8 L483.5,273.6 L512.0,273.4" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" /></svg>
+        <div class="caption">
+          Рисунок 3. Вспомогательные ветки: stage-1 предобучение на полных стихах и отдельный planner окончаний.
+        </div>
+      </div>
+
+      <h2>4. Методы оценки</h2>
+      <p>
+        Для оценки использовались как loss-based метрики, так и task-specific критерии. Для финальной восьмистрочной задачи
+        основными считались три показателя: <code>exact_8_lines_rate</code> (генерация ровно восьми строк),
+        <code>second_line_rhyme_rate</code> (рифма между первой и второй строкой) и <code>scheme_rate</code>
+        (соблюдение полной целевой схемы строфы). Для planner-а дополнительно измерялись точное совпадение конечных слов
+        и совпадение ударного рифменного хвоста.
+      </p>
+
+      <div class="figure">
+        <svg viewBox="0 0 760 360" role="img" aria-label="Сравнение качества 8-строчных моделей"><rect width="100%" height="100%" fill="white" rx="16" /><text x="56" y="20" font-size="16" font-weight="700" fill="#1f2937">Сравнение качества 8-строчных моделей</text><line x1="56" y1="284.0" x2="740" y2="284.0" stroke="#e5e7eb" /><text x="48" y="288.0" text-anchor="end" font-size="11" fill="#6b7280">0.00</text><line x1="56" y1="234.0" x2="740" y2="234.0" stroke="#e5e7eb" /><text x="48" y="238.0" text-anchor="end" font-size="11" fill="#6b7280">0.22</text><line x1="56" y1="184.0" x2="740" y2="184.0" stroke="#e5e7eb" /><text x="48" y="188.0" text-anchor="end" font-size="11" fill="#6b7280">0.45</text><line x1="56" y1="134.0" x2="740" y2="134.0" stroke="#e5e7eb" /><text x="48" y="138.0" text-anchor="end" font-size="11" fill="#6b7280">0.67</text><line x1="56" y1="84.0" x2="740" y2="84.0" stroke="#e5e7eb" /><text x="48" y="88.0" text-anchor="end" font-size="11" fill="#6b7280">0.89</text><line x1="56" y1="34.0" x2="740" y2="34.0" stroke="#e5e7eb" /><text x="48" y="38.0" text-anchor="end" font-size="11" fill="#6b7280">1.12</text><rect x="64.5" y="60.8" width="25.6" height="223.2" fill="#bb4d34" rx="4" /><rect x="107.3" y="113.8" width="25.6" height="170.2" fill="#2f6f73" rx="4" /><rect x="150.1" y="191.4" width="25.6" height="92.6" fill="#6b4f9d" rx="4" /><text x="141.5" y="326" text-anchor="middle" font-size="11" fill="#374151" transform="rotate(-20 141.5 326)">AABB CCDD baseline</text><rect x="235.6" y="60.8" width="25.6" height="223.2" fill="#bb4d34" rx="4" /><rect x="278.3" y="275.0" width="25.6" height="9.0" fill="#2f6f73" rx="4" /><rect x="321.1" y="216.1" width="25.6" height="67.9" fill="#6b4f9d" rx="4" /><text x="312.5" y="326" text-anchor="middle" font-size="11" fill="#374151" transform="rotate(-20 312.5 326)">ABAB ABAB</text><rect x="406.6" y="63.0" width="25.6" height="221.0" fill="#bb4d34" rx="4" /><rect x="449.3" y="154.1" width="25.6" height="129.9" fill="#2f6f73" rx="4" /><rect x="492.1" y="248.9" width="25.6" height="35.1" fill="#6b4f9d" rx="4" /><text x="483.5" y="326" text-anchor="middle" font-size="11" fill="#374151" transform="rotate(-20 483.5 326)">Stage1 → Stage2</text><rect x="577.5" y="60.8" width="25.6" height="223.2" fill="#bb4d34" rx="4" /><rect x="620.3" y="142.9" width="25.6" height="141.1" fill="#2f6f73" rx="4" /><rect x="663.0" y="213.1" width="25.6" height="70.9" fill="#6b4f9d" rx="4" /><text x="654.5" y="326" text-anchor="middle" font-size="11" fill="#374151" transform="rotate(-20 654.5 326)">Planner-guided</text><rect x="56" y="336" width="12" height="12" fill="#bb4d34" rx="2" /><text x="74" y="346" font-size="11" fill="#374151">exact_8_lines_rate</text><rect x="236" y="336" width="12" height="12" fill="#2f6f73" rx="2" /><text x="254" y="346" font-size="11" fill="#374151">second_line_rhyme_rate</text><rect x="416" y="336" width="12" height="12" fill="#6b4f9d" rx="2" /><text x="434" y="346" font-size="11" fill="#374151">scheme_rate</text></svg>
+        <div class="caption">
+          Рисунок 4. Сравнение качества четырех 8-строчных моделей по ключевым task-specific метрикам.
+        </div>
+      </div>
+
+      <h2>5. Результаты</h2>
+      <h3>5.1. Предварительные эксперименты</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Эксперимент</th>
+            <th>Корпус</th>
+            <th>Лучший val_loss</th>
+            <th>Рифма 1–2</th>
+            <th>Наблюдение</th>
+          </tr>
+        </thead>
+        <tbody>
+          
+          <tr>
+            <td>Начальный baseline (без 8-строчной постановки)</td>
+            <td><code>processed</code></td>
+            <td>3.2320</td>
+            <td>0.12</td>
+            <td>Генерация длиннее, но рифма слабая.</td>
+          </tr>
+          
+          <tr>
+            <td>Rhyme-focused retrain</td>
+            <td><code>processed_rhyme_focus</code></td>
+            <td>2.9590</td>
+            <td>0.55</td>
+            <td>Рифма резко улучшилась, но генерация схлопнулась к 2 строкам.</td>
+          </tr>
+          
+        </tbody>
+      </table>
+
+      <p>
+        Эти ранние результаты были важны для уточнения постановки задачи. Они показали, что рифму между первой и второй
+        строкой можно существенно улучшить, однако без явного контроля длины и структуры генерация быстро схлопывается
+        к очень коротким ответам.
+      </p>
+
+      <h3>5.2. Основные 8-строчные ветки</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Модель</th>
+            <th>Лучший val_loss</th>
+            <th>Ровно 8 строк</th>
+            <th>Рифма 1–2</th>
+            <th>Полная схема</th>
+            <th>Комментарий</th>
+          </tr>
+        </thead>
+        <tbody>
+          
+          <tr>
+            <td>AABB CCDD baseline</td>
+            <td>2.7783</td>
+            <td>0.9967</td>
+            <td>0.7600</td>
+            <td>0.4133</td>
+            <td>Основной 8-строчный baseline на quality-filtered корпусе.</td>
+          </tr>
+          
+          <tr>
+            <td>ABAB ABAB</td>
+            <td>2.2915</td>
+            <td>0.9967</td>
+            <td>0.0400</td>
+            <td>0.3033</td>
+            <td>Альтернативная схема с большей частотой в корпусе.</td>
+          </tr>
+          
+          <tr>
+            <td>Stage1 → Stage2</td>
+            <td>2.6673</td>
+            <td>0.9867</td>
+            <td>0.5800</td>
+            <td>0.1567</td>
+            <td>Предобучение на полных стихах с последующим дообучением на строгой задаче.</td>
+          </tr>
+          
+          <tr>
+            <td>Planner-guided</td>
+            <td>2.5538</td>
+            <td>0.9967</td>
+            <td>0.6300</td>
+            <td>0.3167</td>
+            <td>Двухшаговая архитектура: предсказание окончаний строк 2/4/6/8 и последующая генерация.</td>
+          </tr>
+          
+        </tbody>
+      </table>
+
+      <p>
+        Наиболее сильной моделью по совокупности формальных ограничений оказался baseline <code>AABB CCDD</code>.
+        Он почти идеально удерживал длину в восемь строк и давал наилучшую полную схему рифмовки. Ветка
+        <code>ABAB ABAB</code>, несмотря на более высокую частоту в корпусе, оказалась хуже; это указывает на то,
+        что для малой модели рифма через строку оказывается сложнее, чем более локальная схема <code>AABB</code>.
+      </p>
+      <p>
+        Staged-подход интересен тем, что улучшил loss, но ухудшил именно целевую constrained-generation задачу.
+        Это означает, что более хороший next-token objective на близком домене не гарантирует лучшей управляемой
+        генерации в узкой формальной постановке. Planner-guided архитектура, в свою очередь, превзошла staged-ветку,
+        однако также не обошла baseline.
+      </p>
+
+      <h3>5.3. Качественный анализ генераций</h3>
+      <p>
+        Формальные метрики не исчерпывают качества поэтического текста. Ниже приведены характерные примеры генерации.
+        Видно, что даже лучшая модель нередко удерживает схему и длину ценой семантической рыхлости, а planner-guided
+        ветка в текущем виде способна навязывать структуру, но иногда генерирует псевдослова и распадающийся синтаксис.
+      </p>
+      <div class="sample-grid">
+        <div class="sample-card"><h4>Baseline AABB</h4><div class="sample-prompt"><strong>Затравка:</strong> Любовь опасна и сильна,</div><pre>Любовь опасна и сильна,
+Когда я встретила как ты одна.
+Глаза её не полыхавших глаз,
+Их назвали б, как я ей алмаз.
+Когда я видел целый город,
+Когда б не была бы счастлив был наш.
+Когда ты все потерял и ждал,
+Как раб твой, и может не ждал.</pre></div><div class="sample-card"><h4>ABAB</h4><div class="sample-prompt"><strong>Затравка:</strong> Зачем казаться не тем, будь собой,</div><pre>Зачем казаться не тем, будь собой,
+Когда то был необходимым
+По жизни каждый был, не той,
+Кто то был всегда одичалым.
+И нет того, кто был богат,
+В своей любви умел держаться.
+И кто-то шел и не был гад,
+И думал, что с кем дружиться.</pre></div><div class="sample-card"><h4>Stage1 → Stage2</h4><div class="sample-prompt"><strong>Затравка:</strong> Любовь опасна и сильна,</div><pre>Любовь опасна и сильна,
+Но как то необходима,
+Но вот её ей не хватает,
+Любовь к тебе опять страдает.
+Забавные не обижают,
+Всегда о ней всегда мечтают,
+И лишь в её мечтах
+Она со мною в облаках.</pre></div><div class="sample-card"><h4>Planner-guided</h4><div class="sample-prompt"><strong>Затравка:</strong> Жизнь просит, требует словами,</div><div class="sample-plan"><strong>План окончаний:</strong> &lt;E2&gt;=словами, &lt;E4&gt;=нами, &lt;E6&gt;=управляет, &lt;E8&gt;=утопает</div><pre>Жизнь просит, требует словами,
+Чтобы не видеть словами,
+Когда мы друг друга сами,
+Не видим жизнь мы между нами.
+Когда есть мир - все убивает,
+То всё как всегда управляет,
+Когда мысль нас разделяет,
+То мир наш путь утопает.</pre></div>
+      </div>
+
+      <h2>6. Обсуждение</h2>
+      <p>
+        Центральный вывод эксперимента состоит в том, что обучение с нуля только на поэтическом корпусе позволяет
+        частично овладеть формой, но почти неизбежно страдает по смыслу и языковой естественности. Поэтический корпус,
+        даже достаточно большой в абсолютных числах, остается слишком малым и слишком специализированным, чтобы заменить
+        общий языковой pretraining. Модель учится рифмовать, завершать строки и имитировать поэтическую поверхность,
+        но не получает достаточного фундамента для устойчивой семантической композиции.
+      </p>
+      <p>
+        Planner-guided архитектура была введена именно для ослабления нагрузки на генератор: предполагалось, что если
+        вынести планирование окончаний в отдельную модель, основной генератор сможет сосредоточиться на содержании строк.
+        На практике planner оказался слишком слаб, чтобы надежно прогнозировать будущие окончания, и downstream-выигрыш
+        не перекрыл потери относительно простого strict baseline. Тем не менее отрицательный результат здесь полезен:
+        он показывает, что сама идея декомпозиции перспективна, но без более сильного языкового фундамента или более
+        качественного planner-а она не дает преимущества.
+      </p>
+
+      <h2>7. Угрозы валидности</h2>
+      <ul>
+        <li>Корпус неоднороден по качеству и стилю; в нем присутствуют как сильные тексты, так и любительская поэзия.</li>
+        <li>Часть рифмовой и просодической разметки основана на эвристиках и стресс-модели, а не на полностью ручной аннотации.</li>
+        <li>Сравнение моделей проводилось в рамках ограниченного бюджета вычислений и на относительно малой архитектуре.</li>
+        <li>Оценка осмысленности остается преимущественно качественной; формальные метрики не отражают глубину поэтического содержания.</li>
+      </ul>
+
+      <h2>8. Заключение</h2>
+      <ul class="conclusion-list">
+        
+        <li>Обучение с нуля только на корпусе русской поэзии позволяет надежно навязать формальные ограничения длины и рифмовки, но не обеспечивает естественность языка на уровне, сопоставимом с общим языковым pretraining.</li>
+        
+        <li>Наиболее успешной оказалась узкая постановка AABB CCDD на quality-filtered корпусе: она дала почти идеальную длину в 8 строк и лучший баланс между рифмой и структурой.</li>
+        
+        <li>Более частая в корпусе схема ABAB ABAB не дала улучшения: малой decoder-only модели оказалось трудно удерживать рифму через строку.</li>
+        
+        <li>Предобучение на полных стихах улучшило next-token objective, но ухудшило целевую constrained-generation задачу; этот отрицательный результат важен сам по себе.</li>
+        
+        <li>Planner-guided архитектура оказалась лучше staged-подхода, но не превзошла строгий baseline, что указывает на недостаточную силу planner-а при отсутствии общего языкового фундамента.</li>
+        
+        <li>Главное ограничение эксперимента состоит в том, что модель никогда не видела большого общего корпуса русского языка; именно это, вероятно, является основной причиной слабой семантики и появления псевдослов.</li>
+        
+      </ul>
+
+      <h2>9. Практический вывод</h2>
+      <p>
+        Если целью является именно <em>эксперимент</em> по обучению с нуля на поэзии, то проект достиг содержательного
+        результата: удалось построить несколько сравнимых веток, показать обучаемость формальных ограничений и получить
+        серию как положительных, так и отрицательных эмпирических выводов. Если же цель смещается к качественной генерации
+        осмысленных стихов, то следующий шаг почти неизбежно связан либо с большим общим русским корпусом для pretraining,
+        либо с использованием уже готовой базовой языковой модели.
+      </p>
+
+      <p class="small">
+        Статья автоматически собрана из <code>HANDOFF.md</code>, локальных логов обучения, quality-filtered статистик
+        и удаленных артефактов GPU-хоста, синхронизированных для анализа.
+      </p>
+    </article>
+  </main>
+</body>
+</html>
+        
