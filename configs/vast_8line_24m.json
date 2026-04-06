@@ -1,0 +1,31 @@
+{
+  "dataset_dir": "data/processed_aabb8",
+  "tokenizer_model": "artifacts/tokenizer_aabb8/poetry.model",
+  "out_dir": "artifacts/checkpoints/vast_8line_24m",
+  "block_size": 256,
+  "batch_size": 64,
+  "gradient_accumulation_steps": 2,
+  "max_iters": 12000,
+  "eval_interval": 500,
+  "eval_steps": 50,
+  "learning_rate": 0.0003,
+  "weight_decay": 0.1,
+  "beta1": 0.9,
+  "beta2": 0.95,
+  "grad_clip": 1.0,
+  "warmup_iters": 300,
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "compile": false,
+  "seed": 1337,
+  "prompt_mode": "structured_8line_aabb_ccdd",
+  "model": {
+    "vocab_size": 16000,
+    "block_size": 256,
+    "n_layer": 10,
+    "n_head": 6,
+    "n_embd": 384,
+    "dropout": 0.1,
+    "bias": false
+  }
+}

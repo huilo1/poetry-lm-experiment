@@ -1,0 +1,14 @@
+[Unit]
+Description=SSH tunnel from web host to Poetry LM GPU inference API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/poetry-lm/inference-tunnel.env
+ExecStart=/usr/bin/ssh -NT -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new -i ${SSH_KEY_PATH} -p ${SSH_PORT} -L 127.0.0.1:${TUNNEL_LOCAL_PORT}:127.0.0.1:${GPU_API_PORT} ${SSH_USER}@${SSH_HOST}
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

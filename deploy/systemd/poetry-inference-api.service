@@ -1,0 +1,15 @@
+[Unit]
+Description=Poetry LM inference API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/poetry-lm/gpu-inference-api.env
+WorkingDirectory=/
+ExecStart=/usr/bin/bash -lc 'cd "$PROJECT_ROOT" && . .venv/bin/activate && export PYTHONPATH=src && exec python scripts/inference_api.py --host "$INFERENCE_API_HOST" --port "$INFERENCE_API_PORT" --device "$INFERENCE_DEVICE"'
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

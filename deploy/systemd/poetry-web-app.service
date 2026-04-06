@@ -1,0 +1,15 @@
+[Unit]
+Description=Poetry LM web app
+After=network-online.target poetry-inference-tunnel.service
+Wants=network-online.target poetry-inference-tunnel.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/poetry-lm/web-app.env
+WorkingDirectory=/
+ExecStart=/usr/bin/bash -lc 'cd "$PROJECT_ROOT" && . .venv/bin/activate && export PYTHONPATH=src && export INFERENCE_API_BASE_URL="$INFERENCE_API_BASE_URL" && exec python scripts/web_app.py --host "$WEBAPP_HOST" --port "$WEBAPP_PORT" --inference-api-base-url "$INFERENCE_API_BASE_URL"'
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
