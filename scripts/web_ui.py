@@ -8,6 +8,7 @@ import gradio as gr
 
 from poetry_lm.inference import generate_text, load_bundle, resolve_device
 from poetry_lm.model_registry import model_specs
+from poetry_lm.refiner import load_refiner, refine_draft_text
 
 
 MAX_NEW_TOKENS = 160
@@ -39,13 +40,13 @@ def model_status_markdown(device: str) -> str:
     rows: list[str] = []
     for spec in model_specs():
         checkpoint_exists = all(path.exists() for path in spec.all_checkpoints())
-        tokenizer_exists = spec.tokenizer.exists()
+        tokenizer_exists = all(path.exists() for path in spec.all_tokenizers())
         ok = checkpoint_exists and tokenizer_exists
         status = _status_badge("ready", True) if ok else _status_badge("pending", False)
         checkpoint_text = "<br>".join(
             html.escape(str(path)) for path in spec.all_checkpoints()
         )
-        tokenizer_text = html.escape(str(spec.tokenizer))
+        tokenizer_text = "<br>".join(html.escape(str(path)) for path in spec.all_tokenizers())
         note = html.escape(spec.note)
         rows.append(
             "<tr>"
@@ -82,7 +83,7 @@ def generate_all(prompt: str, temperature: float, top_k: int, device: str):
         if not all(path.exists() for path in spec.all_checkpoints()):
             outputs.append("Чекпойнт еще не готов.")
             continue
-        if not spec.tokenizer.exists():
+        if not all(path.exists() for path in spec.all_tokenizers()):
             outputs.append("Tokenizer не найден.")
             continue
         try:
@@ -100,6 +101,30 @@ def generate_all(prompt: str, temperature: float, top_k: int, device: str):
                     top_k=int(top_k),
                 )
                 outputs.append(output)
+            elif spec.is_refiner_guided:
+                baseline_bundle = load_bundle(spec.checkpoint, spec.tokenizer, device=device)
+                draft = generate_text(
+                    bundle=baseline_bundle,
+                    prompt=prompt,
+                    max_new_tokens=MAX_NEW_TOKENS,
+                    temperature=float(temperature),
+                    top_k=int(top_k),
+                )
+                refiner, refiner_tokenizer, _ = load_refiner(
+                    spec.refiner_checkpoint,
+                    spec.refiner_tokenizer,
+                    device=device,
+                )
+                refined = refine_draft_text(
+                    model=refiner,
+                    tokenizer=refiner_tokenizer,
+                    draft_text=draft,
+                    device=device,
+                    steps=8,
+                    temperature=0.8,
+                    top_k=32,
+                )
+                outputs.append(refined)
             else:
                 bundle = load_bundle(spec.checkpoint, spec.tokenizer, device=device)
                 outputs.append(
@@ -128,7 +153,7 @@ def build_demo(device: str) -> gr.Blocks:
         gr.Markdown(
             """
             # Poetry LM Compare
-            Сравнение трех актуальных веток генерации по одной первой строке.
+            Сравнение четырех актуальных веток генерации по одной первой строке.
             """,
             elem_classes=["poetry-shell"],
         )
@@ -184,6 +209,13 @@ def build_demo(device: str) -> gr.Blocks:
                 elem_classes=["poetry-out"],
                 buttons=["copy"],
             )
+            output_refiner = gr.Textbox(
+                label="AABB refiner-guided",
+                lines=18,
+                max_lines=24,
+                elem_classes=["poetry-out"],
+                buttons=["copy"],
+            )
 
         gr.Markdown(
             "Пока скрытое по умолчанию: `max_new_tokens=160`, device выбирается автоматически. "
@@ -191,7 +223,7 @@ def build_demo(device: str) -> gr.Blocks:
             elem_classes=["poetry-note"],
         )
 
-        outputs = [status, output_aabb, output_abab, output_planner]
+        outputs = [status, output_aabb, output_abab, output_planner, output_refiner]
         generate_btn.click(
             fn=generate_all,
             inputs=[prompt, temperature, top_k, device_state],

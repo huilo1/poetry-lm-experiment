@@ -6,7 +6,8 @@
 
 - `AABB CCDD` baseline на 8 строк;
 - `ABAB ABAB` comparative branch;
-- staged training: сначала полные стихи, потом строгое `AABB CCDD` дообучение.
+- planner-guided branch;
+- `Qwen3-8B-Base` QLoRA branch для следующего этапа сравнения `scratch vs base`.
 
 Основные компоненты:
 
@@ -39,6 +40,22 @@ python scripts/prepare_tokens.py
 python scripts/train.py --config configs/tiny_cpu.json
 python scripts/generate.py --checkpoint artifacts/checkpoints/smoke_cpu/best.pt --tokenizer-model artifacts/tokenizer/poetry.model --prompt "Я помню чудное мгновенье"
 ```
+
+## Qwen3-8B ветка
+
+Для ветки с базовой моделью используются отдельные скрипты и optional dependencies:
+
+```bash
+pip install -e ".[qwen]"
+python scripts/build_qwen_sft_dataset.py --input-dir data/processed_aabb8_qf2 --out-dir data/qwen_aabb_qf2_sft
+python scripts/train_qwen_sft.py --config configs/vast_qwen3_8b_aabb_qf2_qlora.json
+python scripts/evaluate_qwen_8line.py --base-model Qwen/Qwen3-8B-Base --adapter-dir artifacts/checkpoints/vast_qwen3_8b_aabb_qf2_qlora/best_adapter --test-file data/qwen_aabb_qf2_sft/test.jsonl.gz --load-in-4bit --bf16
+```
+
+Эта ветка не использует наш кастомный tokenizer и обучается как completion-SFT:
+- вход: первая строка и структурные метки `[L1]...[L8]`;
+- выход: строки `2-8`;
+- целевая схема: `AABB CCDD`.
 
 ## Compare UI
 

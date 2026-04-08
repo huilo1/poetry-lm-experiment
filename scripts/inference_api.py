@@ -10,6 +10,7 @@ import uvicorn
 
 from poetry_lm.inference import generate_text, generate_text_with_planner, load_bundle, resolve_device
 from poetry_lm.model_registry import model_map, model_specs
+from poetry_lm.refiner import load_refiner, refine_draft_text
 
 
 MAX_NEW_TOKENS = 160
@@ -44,7 +45,9 @@ def build_app(device: str) -> FastAPI:
     def health():
         items = []
         for spec in model_specs():
-            ready = all(path.exists() for path in spec.all_checkpoints()) and spec.tokenizer.exists()
+            ready = all(path.exists() for path in spec.all_checkpoints()) and all(
+                path.exists() for path in spec.all_tokenizers()
+            )
             items.append(
                 {
                     "key": spec.key,
@@ -52,7 +55,9 @@ def build_app(device: str) -> FastAPI:
                     "note": spec.note,
                     "checkpoint": str(spec.checkpoint),
                     "planner_checkpoint": str(spec.planner_checkpoint) if spec.planner_checkpoint else None,
+                    "refiner_checkpoint": str(spec.refiner_checkpoint) if spec.refiner_checkpoint else None,
                     "tokenizer": str(spec.tokenizer),
+                    "refiner_tokenizer": str(spec.refiner_tokenizer) if spec.refiner_tokenizer else None,
                     "ready": ready,
                 }
             )
@@ -73,8 +78,12 @@ def build_app(device: str) -> FastAPI:
             raise HTTPException(status_code=409, detail="checkpoint not ready")
         if spec.planner_checkpoint is not None and not spec.planner_checkpoint.exists():
             raise HTTPException(status_code=409, detail="planner checkpoint not ready")
+        if spec.refiner_checkpoint is not None and not spec.refiner_checkpoint.exists():
+            raise HTTPException(status_code=409, detail="refiner checkpoint not ready")
         if not spec.tokenizer.exists():
             raise HTTPException(status_code=500, detail="tokenizer missing")
+        if spec.refiner_tokenizer is not None and not spec.refiner_tokenizer.exists():
+            raise HTTPException(status_code=500, detail="refiner tokenizer missing")
 
         try:
             if spec.is_planner_guided:
@@ -87,6 +96,29 @@ def build_app(device: str) -> FastAPI:
                     max_new_tokens=MAX_NEW_TOKENS,
                     temperature=request.temperature,
                     top_k=request.top_k,
+                )
+            elif spec.is_refiner_guided:
+                baseline_bundle = load_bundle(spec.checkpoint, spec.tokenizer, device=resolved_device)
+                draft = generate_text(
+                    bundle=baseline_bundle,
+                    prompt=request.prompt,
+                    max_new_tokens=MAX_NEW_TOKENS,
+                    temperature=request.temperature,
+                    top_k=request.top_k,
+                )
+                refiner, refiner_tokenizer, _ = load_refiner(
+                    spec.refiner_checkpoint,
+                    spec.refiner_tokenizer,
+                    device=resolved_device,
+                )
+                output = refine_draft_text(
+                    model=refiner,
+                    tokenizer=refiner_tokenizer,
+                    draft_text=draft,
+                    device=resolved_device,
+                    steps=8,
+                    temperature=0.8,
+                    top_k=32,
                 )
             else:
                 bundle = load_bundle(spec.checkpoint, spec.tokenizer, device=resolved_device)

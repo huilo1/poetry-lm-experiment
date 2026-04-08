@@ -149,6 +149,51 @@ Interpretation:
 - compared to the scratch `AABB CCDD` baseline, it is dramatically worse on rhyme and scheme despite much better language fluency
 - this is an important negative result: for the strict rhyme-constrained task, the scratch poetry-only model outperformed the strong general-purpose base model
 
+## New Experimental Branch: Diffusion-style Refiner
+
+After the scratch-vs-base comparison, a new experimental direction was started:
+- do not replace the current best `AABB CCDD` generator yet
+- add a second-stage `masked denoising refiner` over the scratch baseline
+- motivation: test a more global "revise the poem draft" regime instead of purely left-to-right generation
+
+Implemented in code:
+- refiner model: `src/poetry_lm/refiner.py`
+- training script: `scripts/train_refiner.py`
+- generation script: `scripts/generate_with_refiner.py`
+- evaluation script: `scripts/evaluate_refiner_8line.py`
+- configs:
+  - `configs/smoke_refiner_aabb.json`
+  - `configs/host_5060_refiner_aabb_20m.json`
+
+Tokenizer change:
+- control token `<MASK>` was added to `src/poetry_lm/tokenizer.py`
+- a separate refiner tokenizer is required; old tokenizers remain valid for old checkpoints, but they do not contain `<MASK>`
+
+Current refiner design:
+- bidirectional Transformer denoiser, not causal
+- trained to reconstruct masked tokens inside structured 8-line `AABB CCDD` windows
+- masking is focused on lines `2-8`, with extra weight on the final tokens of rhyme-carrying lines `2/4/6/8`
+- inference loop:
+  - baseline generates a full 8-line draft
+  - refiner repeatedly remasks low-confidence content positions
+  - refiner fills them again under bidirectional context
+
+Smoke status:
+- smoke tokenizer trained successfully at `artifacts/tokenizer_refiner_smoke/poetry.model`
+- smoke refiner trained successfully at `artifacts/checkpoints/smoke_refiner_aabb`
+- loss decreased from about `8.33` to `6.50`
+- end-to-end `baseline -> refiner` generation path runs without crashing
+
+Important limitation of the current smoke:
+- the tiny CPU smoke checkpoint is too weak to judge text quality
+- qualitative outputs are not meaningful yet
+- this branch now needs a real GPU run before any conclusion about usefulness
+
+Next step for this branch:
+- train a real refiner run from `configs/host_5060_refiner_aabb_20m.json`
+- evaluate it against the current `host_5060_8line_20m` scratch baseline on the same `evaluate_8line` metrics
+- if the refiner shows even modest improvement, then consider a later pure diffusion-style generator experiment
+
 ## Goal
 
 Russian-only poetry continuation model trained from scratch.
@@ -1177,3 +1222,135 @@ Conclusion:
 - planner-guided is clearly better than the failed staged branch
 - but it is still worse than the current AABB baseline
 - it keeps length just as well, but does not improve rhyme quality enough
+
+## Diffusion-style refiner branch
+
+After the planner-guided branch, the next experimental direction was a diffusion-style refiner layered on top of the current best strict baseline.
+
+Goal:
+- keep the strong `AABB CCDD` draft generator unchanged
+- add a separate bidirectional denoiser that edits an already generated 8-line draft
+- bias refinement toward line endings, especially lines `2/4/6/8`, to improve rhyme without adding decode-time reranking
+
+Implemented components:
+- refiner model:
+  - `src/poetry_lm/refiner.py`
+- training script:
+  - `scripts/train_refiner.py`
+- generation pipeline:
+  - `scripts/generate_with_refiner.py`
+- evaluation script:
+  - `scripts/evaluate_refiner_8line.py`
+- real training configs:
+  - `configs/host_5060_refiner_aabb_20m.json`
+  - `configs/vast_refiner_aabb_20m.json`
+- tokenizer change:
+  - `src/poetry_lm/tokenizer.py`
+  - added special token `<MASK>`
+
+Current refiner design:
+- a separate bidirectional Transformer denoiser
+- same core scale as the scratch baseline:
+  - `8` layers
+  - `6` heads
+  - `384` hidden size
+  - `256` token context
+- train objective:
+  - randomly mask tokens inside a structured 8-line sample
+  - increase mask pressure near rhyme-bearing line tails
+  - predict original tokens under full bidirectional context
+- inference path:
+  - baseline generates the draft
+  - refiner repeatedly remasks and fills low-confidence positions
+
+Smoke result:
+- tokenizer:
+  - `artifacts/tokenizer_refiner_smoke/poetry.model`
+- checkpoint:
+  - `artifacts/checkpoints/smoke_refiner_aabb`
+- qualitative result:
+  - end-to-end `baseline -> refiner` pipeline worked
+  - smoke quality was too weak for judgment
+
+### Full Vast run
+
+The full refiner run was executed on Vast instead of the local `RTX 5060 Ti 8GB`, to avoid wasting local time on a long experimental branch.
+
+Artifacts and orchestration added:
+- remote pipeline:
+  - `scripts/run_refiner_vast_pipeline.sh`
+- safe watcher:
+  - `scripts/watch_refiner_vast_run.sh`
+- final local artifact directory:
+  - `artifacts/downloaded/vast_refiner_aabb_20m`
+
+Vast run notes:
+- two early Vast offers failed at the infrastructure level before real training:
+  - one instance never brought up the expected container
+  - one instance got stuck in `stopped`
+- the successful run used:
+  - instance id: `34365978`
+  - GPU: `RTX 5090 32GB`
+- important compatibility issue on 50-series hardware:
+  - the original PyTorch image shipped a build without `sm_120` kernels
+  - training crashed with `no kernel image is available for execution on the device`
+  - fix:
+    - upgrade to `torch 2.11.0+cu128`
+  - this should be treated as a required step for future 5090-class Vast runs
+
+Training result:
+- checkpoint dir:
+  - `artifacts/downloaded/vast_refiner_aabb_20m`
+- `train_samples = 67179`
+- `val_samples = 5232`
+- `best_val_loss = 4.4632`
+- model/config:
+  - `batch_size = 32`
+  - `gradient_accumulation_steps = 2`
+  - `max_iters = 8000`
+  - `dtype = bfloat16`
+  - `mask_prob = 0.18`
+  - `tail_span = 3`
+  - `tail_boost = 3.0`
+
+Evaluation result on `300` test samples:
+- `exact_8_lines_rate = 0.9967`
+- `second_line_rhyme_rate = 0.15`
+- `aabb_ccdd_rate = 0.0333`
+
+Saved evaluation artifacts:
+- `artifacts/downloaded/vast_refiner_aabb_20m/best.refined.eval8.json`
+- `artifacts/downloaded/vast_refiner_aabb_20m/eval.log`
+- `artifacts/downloaded/vast_refiner_aabb_20m/summary.json`
+- `artifacts/downloaded/vast_refiner_aabb_20m/best.pt`
+- `artifacts/downloaded/vast_refiner_aabb_20m/final.pt`
+
+Qualitative conclusion:
+- the refiner did **not** improve the current strict baseline
+- instead, it often destroyed already acceptable drafts and replaced them with repetitive, broken, low-coherence text
+- the branch preserved 8-line length, but badly damaged rhyme and language quality
+
+Comparison versus the current strict AABB baseline:
+- baseline:
+  - `exact_8_lines_rate = 0.9967`
+  - `second_line_rhyme_rate = 0.76`
+  - `aabb_ccdd_rate = 0.4133`
+- refiner:
+  - `0.9967 / 0.15 / 0.0333`
+
+Practical conclusion:
+- the current refiner design is a strong negative result
+- for this task and this corpus, a post-hoc denoising editor is much harder to train than the direct autoregressive form learner
+- if diffusion-style work continues later, the next step should probably not be "same refiner but bigger"
+- more plausible future directions would be:
+  - pure diffusion-style generation on a much stronger language backbone
+  - or a refinement objective that edits only targeted suffix spans instead of the whole draft
+
+Operational result:
+- full desired artifact set was synced locally before teardown
+- Vast instance `34365978` was destroyed only after local validation of:
+  - `best.pt`
+  - `final.pt`
+  - `summary.json`
+  - `log.jsonl`
+  - `best.refined.eval8.json`
