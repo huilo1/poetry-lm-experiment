@@ -64,21 +64,6 @@ MODEL_SPECS = [
         tokenizer=Path("artifacts/tokenizer_aabb8/poetry.model"),
         note="Текущий основной baseline под 8 строк и AABB CCDD.",
     ),
-    ModelSpec(
-        key="abab_branch",
-        title="ABAB ABAB branch",
-        checkpoint=Path("artifacts/checkpoints/host_5060_8line_abab_20m/best.pt"),
-        tokenizer=Path("artifacts/tokenizer_abab8/poetry.model"),
-        note="Сравнительная ветка с более частой схемой, но худшей рифмой через строку.",
-    ),
-    ModelSpec(
-        key="aabb_planner_guided",
-        title="AABB planner-guided",
-        checkpoint=Path("artifacts/checkpoints/host_5060_aabb_with_plan_20m/best.pt"),
-        planner_checkpoint=Path("artifacts/checkpoints/host_5060_aabb_end_planner_12m/best.pt"),
-        tokenizer=Path("artifacts/tokenizer_aabb_plan/poetry.model"),
-        note="Новая ветка: planner сначала предсказывает окончания строк 2/4/6/8, затем generator пишет стих под этот план.",
-    ),
 ]
 
 

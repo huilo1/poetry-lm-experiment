@@ -132,7 +132,7 @@ def build_demo(device: str) -> gr.Blocks:
         gr.Markdown(
             """
             # Poetry LM Compare
-            Сравнение трех актуальных веток генерации по одной первой строке.
+            Текущий основной baseline по одной первой строке.
             """,
             elem_classes=["poetry-shell"],
         )
@@ -174,20 +174,6 @@ def build_demo(device: str) -> gr.Blocks:
                 elem_classes=["poetry-out"],
                 buttons=["copy"],
             )
-            output_abab = gr.Textbox(
-                label="ABAB ABAB branch",
-                lines=18,
-                max_lines=24,
-                elem_classes=["poetry-out"],
-                buttons=["copy"],
-            )
-            output_planner = gr.Textbox(
-                label="AABB planner-guided",
-                lines=18,
-                max_lines=24,
-                elem_classes=["poetry-out"],
-                buttons=["copy"],
-            )
 
         gr.Markdown(
             "Пока скрытое по умолчанию: `max_new_tokens=160`, device выбирается автоматически. "
@@ -195,7 +181,7 @@ def build_demo(device: str) -> gr.Blocks:
             elem_classes=["poetry-note"],
         )
 
-        outputs = [status, output_aabb, output_abab, output_planner]
+        outputs = [status, output_aabb]
         generate_btn.click(
             fn=generate_all,
             inputs=[prompt, temperature, top_k, device_state],
