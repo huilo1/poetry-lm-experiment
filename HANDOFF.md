@@ -1354,3 +1354,121 @@ Operational result:
   - `summary.json`
   - `log.jsonl`
   - `best.refined.eval8.json`
+
+## GigaChat base branch
+
+After finishing the scratch, Qwen, planner, and refiner branches, the next clean comparison branch used:
+- base model:
+  - `ai-sage/GigaChat3-10B-A1.8B-base`
+- adaptation method:
+  - `LoRA bf16`
+- task:
+  - same strict `AABB CCDD` 8-line continuation setup
+- corpus:
+  - the same `data/processed_aabb8_qf2` data, reformatted into SFT prompt/completion pairs
+
+Added code:
+- dataset builder:
+  - `scripts/build_gigachat_sft_dataset.py`
+- model helper / patched local snapshot logic:
+  - `src/poetry_lm/gigachat_sft.py`
+- training entry:
+  - `scripts/train_gigachat_sft.py`
+- generation:
+  - `scripts/generate_gigachat.py`
+- evaluation:
+  - `scripts/evaluate_gigachat_8line.py`
+- configs:
+  - `configs/benchmark_gigachat3_10b_a1_8b_aabb_lora_bf16.json`
+  - `configs/vast_gigachat3_10b_a1_8b_aabb_qf2_lora_bf16.json`
+- orchestration:
+  - `scripts/run_gigachat_vast_pipeline.sh`
+  - `scripts/onstart_gigachat_vast.sh`
+  - `scripts/watch_gigachat_vast_run.sh`
+
+Important technical fixes discovered on this branch:
+- the raw HF config for `GigaChat3-10B-A1.8B-base` caused strict validation failures inside the installed `huggingface_hub/transformers` stack:
+  - `routed_scaling_factor` was typed as an `int` where the stack expected `float`
+- fix:
+  - `src/poetry_lm/gigachat_sft.py` now downloads a local snapshot and patches `config.json` before tokenizer/model loading
+- pipeline fix:
+  - `scripts/run_gigachat_vast_pipeline.sh` now creates the output directory before piping logs through `tee`
+
+Benchmark run:
+- benchmark config used:
+  - `configs/benchmark_gigachat3_10b_a1_8b_aabb_lora_bf16.json`
+- benchmark confirmed:
+  - LoRA target modules were valid
+  - the model loaded correctly
+  - the patched snapshot logic worked
+- benchmark training result:
+  - `best eval_loss = 2.5534`
+
+Full Vast run:
+- successful instance:
+  - id: `34379519`
+  - GPU: `RTX PRO 6000 WS`
+- safe watcher:
+  - validated local artifacts before teardown
+  - destroyed the instance after successful sync
+- local artifact directory:
+  - `artifacts/downloaded/vast_gigachat3_10b_a1_8b_aabb_qf2_lora_bf16`
+
+Full train result:
+- `train_samples = 67180`
+- `val_samples = 5232`
+- `best_model_checkpoint = checkpoint-8250`
+- `best_metric = 2.3251140117645264`
+- `train_runtime = 5750.2779 sec`
+- `train_steps_per_second = 1.46`
+- final train config actually used:
+  - `per_device_train_batch_size = 8`
+  - `per_device_eval_batch_size = 8`
+  - `gradient_accumulation_steps = 1`
+  - `max_length = 384`
+  - `bf16 = true`
+  - `load_in_4bit = false`
+
+Final task evaluation on `300` prompts:
+- `exact_8_lines_rate = 1.0`
+- `second_line_rhyme_rate = 0.0`
+- `aabb_ccdd_rate = 0.0`
+
+Saved artifacts:
+- `artifacts/downloaded/vast_gigachat3_10b_a1_8b_aabb_qf2_lora_bf16/summary.json`
+- `artifacts/downloaded/vast_gigachat3_10b_a1_8b_aabb_qf2_lora_bf16/train.log`
+- `artifacts/downloaded/vast_gigachat3_10b_a1_8b_aabb_qf2_lora_bf16/eval.log`
+- `artifacts/downloaded/vast_gigachat3_10b_a1_8b_aabb_qf2_lora_bf16/best_adapter/eval8.json`
+- `artifacts/downloaded/vast_gigachat3_10b_a1_8b_aabb_qf2_lora_bf16/best_adapter/adapter_model.safetensors`
+- `artifacts/downloaded/vast_gigachat3_10b_a1_8b_aabb_qf2_lora_bf16/final_adapter/adapter_model.safetensors`
+
+Qualitative conclusion:
+- `GigaChat3-10B-A1.8B-base + LoRA` behaved similarly to the earlier Qwen branch:
+  - it held length very well
+  - it produced more fluent general Russian than the scratch baseline
+  - but it completely failed to internalize the required rhyme constraint
+- the branch therefore did **not** beat the scratch baseline on the actual target task
+
+Comparison against earlier baselines:
+- scratch `AABB CCDD` baseline:
+  - `exact_8_lines_rate = 0.9967`
+  - `second_line_rhyme_rate = 0.76`
+  - `aabb_ccdd_rate = 0.4133`
+- `Qwen3-8B-Base + LoRA`:
+  - `0.98 / 0.0233 / 0.0`
+- `GigaChat3-10B-A1.8B-base + LoRA`:
+  - `1.0 / 0.0 / 0.0`
+
+Research conclusion:
+- in this project, both strong base models (`Qwen` and `GigaChat`) outperformed the scratch model in generic fluency and length control
+- but both failed the strict rhyme-conditioned generation task
+- the scratch model remains the best branch under the current metric definition because it was trained directly on the form constraint instead of only being adapted toward it
+
+Operational conclusion:
+- this branch completed end-to-end successfully:
+  - benchmark run
+  - full train
+  - full generation-eval
+  - local artifact validation
+  - instance destroy
+- unlike the earlier failed Qwen teardown, the full adapter payload was successfully synced before teardown

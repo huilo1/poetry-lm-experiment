@@ -8,7 +8,14 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 import uvicorn
 
-from poetry_lm.inference import generate_text, generate_text_with_planner, load_bundle, resolve_device
+from poetry_lm.inference import (
+    generate_gigachat_text,
+    generate_text,
+    generate_text_with_planner,
+    load_bundle,
+    load_gigachat_bundle,
+    resolve_device,
+)
 from poetry_lm.model_registry import model_map, model_specs
 from poetry_lm.refiner import load_refiner, refine_draft_text
 
@@ -55,6 +62,8 @@ def build_app(device: str) -> FastAPI:
                     "note": spec.note,
                     "checkpoint": str(spec.checkpoint),
                     "planner_checkpoint": str(spec.planner_checkpoint) if spec.planner_checkpoint else None,
+                    "adapter_dir": str(spec.adapter_dir) if spec.adapter_dir else None,
+                    "hf_base_model": spec.hf_base_model,
                     "refiner_checkpoint": str(spec.refiner_checkpoint) if spec.refiner_checkpoint else None,
                     "tokenizer": str(spec.tokenizer),
                     "refiner_tokenizer": str(spec.refiner_tokenizer) if spec.refiner_tokenizer else None,
@@ -119,6 +128,21 @@ def build_app(device: str) -> FastAPI:
                     steps=8,
                     temperature=0.8,
                     top_k=32,
+                )
+            elif spec.is_gigachat_lora:
+                bundle = load_gigachat_bundle(
+                    adapter_dir=spec.adapter_dir,
+                    base_model=spec.hf_base_model,
+                    device=resolved_device,
+                    load_in_4bit=spec.hf_load_in_4bit,
+                    bf16=spec.hf_bf16,
+                )
+                output = generate_gigachat_text(
+                    bundle=bundle,
+                    prompt=request.prompt,
+                    max_new_tokens=MAX_NEW_TOKENS,
+                    temperature=request.temperature,
+                    top_k=request.top_k,
                 )
             else:
                 bundle = load_bundle(spec.checkpoint, spec.tokenizer, device=resolved_device)
