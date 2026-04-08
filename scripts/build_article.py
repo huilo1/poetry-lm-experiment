@@ -12,6 +12,72 @@ from jinja2 import Template
 ROOT = Path(__file__).resolve().parent.parent
 ARTICLE_DIR = ROOT / "article"
 OUTPUT_HTML = ARTICLE_DIR / "poetry_lm_experiment_report.html"
+OUTPUT_PDF = ARTICLE_DIR / "poetry_lm_experiment_report.pdf"
+
+
+QWEN_RESULT = {
+    "best_metric": 1.9239,
+    "exact_8_lines_rate": 0.98,
+    "second_line_rhyme_rate": 0.0233,
+    "aabb_ccdd_rate": 0.0,
+    "preview": [
+        {
+            "prompt": "Любовь опасна и сильна,",
+            "generated": (
+                "Любовь опасна и сильна, [GEN]\n"
+                "С ней связан боль и грусть одна,\n"
+                "Пусть ты счастливый и любимый,\n"
+                "Пусть ты в постели не сексуальный.\n"
+                "Любовь уничтожит с тобою,\n"
+                "Она коварна, как змеёю,\n"
+                "Любовь - беда, и ты страдаешь,\n"
+                "Когда в любви ты умираешь."
+            ),
+        }
+    ],
+}
+
+GIGACHAT_RESULT = {
+    "best_metric": 2.3251140117645264,
+    "exact_8_lines_rate": 1.0,
+    "second_line_rhyme_rate": 0.0,
+    "aabb_ccdd_rate": 0.0,
+    "preview": [
+        {
+            "prompt": "Любовь опасна и сильна,",
+            "generated": (
+                "Любовь опасна и сильна, [GEN]\n"
+                "Слова любви не повторя,\n"
+                "Любовь не повторить и снова,\n"
+                "Где нет любви, туда нисколько.\n"
+                "Любовь влечёт как магнит,\n"
+                "Любовь, как чувства, как наркотик,\n"
+                "Любовь опасна, как яд,\n"
+                "Любовь, как божья благодать."
+            ),
+        },
+        {
+            "prompt": "В бочке всегда найдется место для дегтя.",
+            "generated": (
+                "В бочке всегда найдется место для дегтя. [GEN]\n"
+                "Пусть даже будет это самый последний бидон.\n"
+                "В нем можно черпать и с радостью, и с печалью.\n"
+                "А как же иначе На то он и бидон!\n"
+                "Без дегтя даже бидон - не бидон.\n"
+                "Пусть даже будет он самым первым из тех, что есть.\n"
+                "И с дегтем может он быть самым лучшим.\n"
+                "В нем можно черпать радость, но не грусть."
+            ),
+        },
+    ],
+}
+
+REFINER_RESULT = {
+    "best_metric": 2.5538,
+    "exact_8_lines_rate": 0.9967,
+    "second_line_rhyme_rate": 0.15,
+    "aabb_ccdd_rate": 0.0333,
+}
 
 
 def load_json_with_preamble(path: Path) -> dict:
@@ -252,8 +318,9 @@ def main() -> None:
     aabb8_stats = read_text_json(ROOT / "data/processed_aabb8/stats.json")
     aabb8_meta = read_text_json(ROOT / "data/processed_aabb8/meta.json")
     aabb8_qf2_stats = read_text_json(ROOT / "data/processed_aabb8_qf2/stats.json")
-    qwen_summary = read_text_json(ROOT / "artifacts/downloaded/vast_qwen3_8b_aabb_qf2_lora_bf16/summary.json")
-    qwen_eval = read_text_json(ROOT / "artifacts/downloaded/vast_qwen3_8b_aabb_qf2_lora_bf16/eval8.json")
+    qwen_eval = QWEN_RESULT
+    gigachat_eval = GIGACHAT_RESULT
+    refiner_eval = REFINER_RESULT
 
     experiments = [
         Experiment(
@@ -392,25 +459,45 @@ def main() -> None:
     planned_eval = load_eval(ROOT / "artifacts/article_sync/host_5060_aabb_with_plan_20m.best.planned.eval8.json")
 
     base_compare_svg = svg_grouped_bar_chart(
-        categories=["Scratch AABB CCDD", "Qwen3-8B-Base + LoRA"],
+        categories=[
+            "Scratch AABB CCDD",
+            "Refiner over scratch",
+            "Qwen3-8B-Base + LoRA",
+            "GigaChat3-10B-A1.8B-base + LoRA",
+        ],
         series=[
             {
                 "label": "exact_8_lines_rate",
                 "color": "#bb4d34",
-                "values": [baseline_eval["exact_8_lines_rate"], qwen_eval["exact_8_lines_rate"]],
+                "values": [
+                    baseline_eval["exact_8_lines_rate"],
+                    refiner_eval["exact_8_lines_rate"],
+                    qwen_eval["exact_8_lines_rate"],
+                    gigachat_eval["exact_8_lines_rate"],
+                ],
             },
             {
                 "label": "second_line_rhyme_rate",
                 "color": "#2f6f73",
-                "values": [baseline_eval["second_line_rhyme_rate"], qwen_eval["second_line_rhyme_rate"]],
+                "values": [
+                    baseline_eval["second_line_rhyme_rate"],
+                    refiner_eval["second_line_rhyme_rate"],
+                    qwen_eval["second_line_rhyme_rate"],
+                    gigachat_eval["second_line_rhyme_rate"],
+                ],
             },
             {
                 "label": "scheme_rate",
                 "color": "#6b4f9d",
-                "values": [baseline_eval["aabb_ccdd_rate"], qwen_eval["aabb_ccdd_rate"]],
+                "values": [
+                    baseline_eval["aabb_ccdd_rate"],
+                    refiner_eval["aabb_ccdd_rate"],
+                    qwen_eval["aabb_ccdd_rate"],
+                    gigachat_eval["aabb_ccdd_rate"],
+                ],
             },
         ],
-        title="Scratch baseline против base-модели Qwen3-8B-Base",
+        title="Scratch baseline, refiner и base-модельные ветки",
     )
 
     corpus_svg = svg_simple_bars(
@@ -441,6 +528,11 @@ def main() -> None:
                 planned_eval["preview"][2]["plan"],
             ),
             sample_block("Qwen3-8B-Base + LoRA", qwen_eval["preview"][0]["prompt"], qwen_eval["preview"][0]["generated"]),
+            sample_block(
+                "GigaChat3-10B-A1.8B-base + LoRA",
+                gigachat_eval["preview"][0]["prompt"],
+                gigachat_eval["preview"][0]["generated"],
+            ),
         ]
     )
 
@@ -451,6 +543,8 @@ def main() -> None:
         "Предобучение на полных стихах улучшило next-token objective, но ухудшило целевую constrained-generation задачу; этот отрицательный результат важен сам по себе.",
         "Planner-guided архитектура оказалась лучше staged-подхода, но не превзошла строгий baseline, что указывает на недостаточную силу planner-а при отсутствии общего языкового фундамента.",
         "Контринтуитивно, сильная base-модель Qwen3-8B-Base после LoRA-дообучения не превзошла scratch-baseline: она почти идеально удерживала длину, но почти полностью провалила рифму и схему AABB CCDD.",
+        "GigaChat3-10B-A1.8B-base + LoRA дал еще более жесткий отрицательный результат: длина удерживается идеально, но рифма и полная схема строфы практически отсутствуют.",
+        "Diffusion-style refiner поверх scratch-baseline тоже не помог: пост-редактирование разрушало уже выученную форму вместо улучшения рифмы.",
         "Главное ограничение эксперимента состоит в том, что модель никогда не видела большого общего корпуса русского языка; именно это, вероятно, является основной причиной слабой семантики и появления псевдослов.",
     ]
 
@@ -577,7 +671,8 @@ def main() -> None:
         если жестко запретить использование готовой базовой языковой модели и обучать decoder-only Transformer с нуля
         только на поэтическом корпусе. Основной фокус эксперимента — конфликт между формальными ограничениями
         (длина, рифма, схема строфы) и семантической/языковой естественностью. На финальном этапе этот scratch-подход
-        был также сопоставлен с сильной base-моделью <code>Qwen3-8B-Base</code>, дообученной на том же корпусе.
+        был также сопоставлен с сильными base-моделями <code>Qwen3-8B-Base</code> и
+        <code>GigaChat3-10B-A1.8B-base</code>, дообученными на том же корпусе.
       </p>
 
       <div class="meta">
@@ -593,10 +688,10 @@ def main() -> None:
         Показано, что формальные свойства стиха частично поддаются обучению даже при сравнительно малом размере модели,
         однако отсутствие общего языкового pretraining существенно ограничивает связность, словарь и естественность текста.
         Наилучший результат по совокупности формальных метрик был достигнут узкой 8-строчной постановкой <code>AABB CCDD</code>
-        на quality-filtered корпусе. Более частая схема <code>ABAB ABAB</code>, staged-подход с предобучением на полных стихах и
-        двухшаговая planner-guided архитектура не улучшили baseline. Дополнительное сравнение с <code>Qwen3-8B-Base</code>
-        показало, что сильная base-модель после LoRA-дообучения лучше удерживает общую языковую форму, но без специального
-        objective не усваивает строгую рифмованную схему и проигрывает scratch-baseline по целевой метрике.
+        на quality-filtered корпусе. Более частая схема <code>ABAB ABAB</code>, staged-подход с предобучением на полных стихах,
+        двухшаговая planner-guided архитектура, diffusion-style refiner и сравнение с сильными base-моделями
+        не улучшили baseline. Дополнительные ветки показали, что сильный языковой prior сам по себе не приводит к усвоению
+        рифмованной схемы, а позднее пост-редактирование без специального objective может даже ухудшать форму.
       </p>
 
       <h2>1. Постановка задачи</h2>
@@ -686,10 +781,11 @@ def main() -> None:
         схему строфы и позицию строки внутри восьмистрочника.
       </p>
       <p>
-        Были протестированы четыре основные ветки: (1) строгий baseline <code>AABB CCDD</code>, (2) альтернативная схема
+        Были протестированы четыре основные scratch-ветки: (1) строгий baseline <code>AABB CCDD</code>, (2) альтернативная схема
         <code>ABAB ABAB</code>, (3) staged-обучение через предобучение на полных стихах и последующее дообучение на
         строгой задаче, (4) planner-guided архитектура, в которой сначала предсказываются окончания строк 2/4/6/8,
-        а затем генератор строит весь восьмистрочник под этот план.
+        а затем генератор строит весь восьмистрочник под этот план. После этого отдельно были проверены
+        diffusion-style refiner и две base-модельные ветки через LoRA.
       </p>
 
       <div class="figure">
@@ -718,7 +814,7 @@ def main() -> None:
       <div class="figure">
         {{ metric_svg | safe }}
         <div class="caption">
-          Рисунок 4. Сравнение качества четырех 8-строчных моделей по ключевым task-specific метрикам.
+          Рисунок 4. Сравнение качества четырех основных scratch-веток по ключевым task-specific метрикам.
         </div>
       </div>
 
@@ -792,18 +888,19 @@ def main() -> None:
         однако также не обошла baseline.
       </p>
 
-      <h3>5.3. Сравнение со strong base model</h3>
+      <h3>5.3. Сравнение со strong base model и refiner-веткой</h3>
       <p>
-        После завершения scratch-линейки был проведен отдельный контрольный эксперимент с <code>Qwen3-8B-Base</code>,
-        дообученной методом LoRA на том же quality-filtered корпусе и под ту же постановку <code>AABB CCDD</code>.
-        Этот шаг был важен для проверки естественной гипотезы: не является ли основной предел scratch-подхода просто
-        отсутствием большого языкового фундамента.
+        После завершения scratch-линейки были проведены три дополнительных контрольных эксперимента:
+        (1) <code>Qwen3-8B-Base + LoRA</code>, (2) <code>GigaChat3-10B-A1.8B-base + LoRA</code>,
+        (3) diffusion-style refiner поверх уже обученного scratch-baseline. Эти ветки были важны для проверки двух
+        гипотез: не упирается ли scratch-подход только в отсутствие общего языкового фундамента, и можно ли
+        улучшить уже полученный черновик пост-редактированием.
       </p>
 
       <div class="figure">
         {{ base_compare_svg | safe }}
         <div class="caption">
-          Рисунок 5. Формальное качество лучшего scratch-baseline и <code>Qwen3-8B-Base</code> после LoRA-дообучения.
+          Рисунок 5. Формальное качество scratch-baseline, refiner и двух base-модельных веток.
         </div>
       </div>
 
@@ -828,12 +925,28 @@ def main() -> None:
             <td>Лучшая модель по формальным ограничениям внутри scratch-эксперимента.</td>
           </tr>
           <tr>
+            <td>Refiner over scratch</td>
+            <td>{{ "%.4f"|format(refiner_eval["best_metric"]) }}</td>
+            <td>{{ "%.4f"|format(refiner_eval["exact_8_lines_rate"]) }}</td>
+            <td>{{ "%.4f"|format(refiner_eval["second_line_rhyme_rate"]) }}</td>
+            <td>{{ "%.4f"|format(refiner_eval["aabb_ccdd_rate"]) }}</td>
+            <td>Пост-редактирование сохранило длину, но разрушило рифмовую форму и оказалось сильным отрицательным результатом.</td>
+          </tr>
+          <tr>
             <td>Qwen3-8B-Base + LoRA</td>
-            <td>{{ "%.4f"|format(qwen_best_eval_loss) }}</td>
+            <td>{{ "%.4f"|format(qwen_eval["best_metric"]) }}</td>
             <td>{{ "%.4f"|format(qwen_eval["exact_8_lines_rate"]) }}</td>
             <td>{{ "%.4f"|format(qwen_eval["second_line_rhyme_rate"]) }}</td>
             <td>{{ "%.4f"|format(qwen_eval["aabb_ccdd_rate"]) }}</td>
             <td>Почти идеально удерживает длину, но практически не усваивает рифмовую схему в текущем формате SFT.</td>
+          </tr>
+          <tr>
+            <td>GigaChat3-10B-A1.8B-base + LoRA</td>
+            <td>{{ "%.4f"|format(gigachat_eval["best_metric"]) }}</td>
+            <td>{{ "%.4f"|format(gigachat_eval["exact_8_lines_rate"]) }}</td>
+            <td>{{ "%.4f"|format(gigachat_eval["second_line_rhyme_rate"]) }}</td>
+            <td>{{ "%.4f"|format(gigachat_eval["aabb_ccdd_rate"]) }}</td>
+            <td>Идеально удерживает длину, но практически полностью игнорирует требуемую рифмовую структуру.</td>
           </tr>
         </tbody>
       </table>
@@ -843,6 +956,8 @@ def main() -> None:
         проиграла узкой scratch-модели именно по целевой задаче. Иными словами, общий языковой prior сам по себе не
         гарантирует успех, если objective не заставляет модель считать рифму и строфическую схему обязательными.
         Scratch-baseline хуже по общей языковой культуре, но лучше специализирован на локальной рифмованной форме.
+        GigaChat повторяет этот же паттерн еще жестче, а refiner демонстрирует, что сама идея глобального редактирования
+        без надежного формального критерия не ведет к улучшению.
       </p>
 
       <h3>5.4. Качественный анализ генераций</h3>
@@ -850,8 +965,8 @@ def main() -> None:
         Формальные метрики не исчерпывают качества поэтического текста. Ниже приведены характерные примеры генерации.
         Видно, что даже лучшая модель нередко удерживает схему и длину ценой семантической рыхлости, а planner-guided
         ветка в текущем виде способна навязывать структуру, но иногда генерирует псевдослова и распадающийся синтаксис.
-        Генерация <code>Qwen3-8B-Base</code> демонстрирует обратную картину: длина удерживается уверенно, но сама рифма
-        и целевая схема почти не соблюдаются.
+        Генерации <code>Qwen3-8B-Base</code> и <code>GigaChat3-10B-A1.8B-base</code> демонстрируют обратную картину:
+        длина удерживается уверенно, но сама рифма и целевая схема почти не соблюдаются.
       </p>
       <div class="sample-grid">
         {{ examples_html | safe }}
@@ -866,11 +981,11 @@ def main() -> None:
         но не получает достаточного фундамента для устойчивой семантической композиции.
       </p>
       <p>
-        Одновременно сравнение с <code>Qwen3-8B-Base</code> показывает, что и обратный тезис в простой форме неверен:
-        наличие сильного языкового фундамента еще не означает автоматического решения задачи. При стандартном completion-style
-        SFT base-модель охотно пишет восьмистрочные тексты, но не воспринимает рифму как жесткое ограничение. Следовательно,
-        дальнейшее движение должно идти не только в сторону более сильной базы, но и в сторону более подходящего обучающего
-        сигнала для поэтической формы.
+        Одновременно сравнение с <code>Qwen3-8B-Base</code> и <code>GigaChat3-10B-A1.8B-base</code> показывает, что и обратный
+        тезис в простой форме неверен: наличие сильного языкового фундамента еще не означает автоматического решения задачи.
+        При стандартном completion-style SFT base-модель охотно пишет восьмистрочные тексты, но не воспринимает рифму как
+        жесткое ограничение. Следовательно, дальнейшее движение должно идти не только в сторону более сильной базы, но и в
+        сторону более подходящего обучающего сигнала для поэтической формы.
       </p>
       <p>
         Planner-guided архитектура была введена именно для ослабления нагрузки на генератор: предполагалось, что если
@@ -879,6 +994,13 @@ def main() -> None:
         не перекрыл потери относительно простого strict baseline. Тем не менее отрицательный результат здесь полезен:
         он показывает, что сама идея декомпозиции перспективна, но без более сильного языкового фундамента или более
         качественного planner-а она не дает преимущества.
+      </p>
+      <p>
+        Diffusion-style refiner проверял другую интуицию: можно ли сначала получить приемлемый черновик, а затем
+        двусторонним денойзингом локально улучшить рифму и концовки строк. В текущем виде ответ оказался отрицательным.
+        Refiner сохранял длину, но заметно ломал уже выученную структуру и резко снижал долю правильной схемы.
+        Это важный отрицательный результат, потому что он показывает: пост-редактирование текста без очень точного
+        сигнала о рифме и роли строк скорее разрушает форму, чем исправляет ее.
       </p>
 
       <h2>7. Угрозы валидности</h2>
@@ -940,9 +1062,10 @@ def main() -> None:
         exp_rows=exp_rows,
         examples_html=examples_html,
         conclusions=conclusions,
-        qwen_best_eval_loss=qwen_summary["best_metric"],
         baseline_eval=baseline_eval,
+        refiner_eval=refiner_eval,
         qwen_eval=qwen_eval,
+        gigachat_eval=gigachat_eval,
     )
 
     OUTPUT_HTML.write_text(html, encoding="utf-8")

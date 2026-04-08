@@ -7,7 +7,7 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 import uvicorn
@@ -15,6 +15,7 @@ import uvicorn
 
 DEFAULT_INFERENCE_API_BASE_URL = os.environ.get("INFERENCE_API_BASE_URL", "http://127.0.0.1:8001")
 ARTICLE_PATH = Path(__file__).resolve().parent.parent / "article" / "poetry_lm_experiment_report.html"
+ARTICLE_PDF_PATH = Path(__file__).resolve().parent.parent / "article" / "poetry_lm_experiment_report.pdf"
 
 
 class GenerateRequest(BaseModel):
@@ -244,6 +245,7 @@ def build_index_html() -> str:
                 </p>
                 <div class="hero-links">
                   <a class="hero-link" href="/article">Открыть статью</a>
+                  <a class="hero-link" href="/article.pdf">Скачать PDF</a>
                 </div>
               </div>
               <img class="portrait" src="/static/khanapi-ebekkuev.jpg" alt="Ханапи Эбеккуев">
@@ -402,6 +404,16 @@ def build_app(inference_api_base_url: str) -> FastAPI:
         if not ARTICLE_PATH.exists():
             raise HTTPException(status_code=404, detail="article not found")
         return ARTICLE_PATH.read_text(encoding="utf-8")
+
+    @app.get("/article.pdf")
+    async def article_pdf():
+        if not ARTICLE_PDF_PATH.exists():
+            raise HTTPException(status_code=404, detail="article pdf not found")
+        return FileResponse(
+            ARTICLE_PDF_PATH,
+            media_type="application/pdf",
+            filename="poetry_lm_experiment_report.pdf",
+        )
 
     @app.get("/api/health")
     async def api_health():
