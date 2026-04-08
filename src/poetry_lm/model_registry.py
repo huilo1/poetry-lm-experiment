@@ -79,21 +79,6 @@ MODEL_SPECS = [
         tokenizer=Path("artifacts/tokenizer_aabb_plan/poetry.model"),
         note="Новая ветка: planner сначала предсказывает окончания строк 2/4/6/8, затем generator пишет стих под этот план.",
     ),
-    ModelSpec(
-        key="gigachat_base_lora",
-        title="GigaChat3 base + LoRA",
-        checkpoint=Path(
-            "artifacts/downloaded/vast_gigachat3_10b_a1_8b_aabb_qf2_lora_bf16/best_adapter/adapter_model.safetensors"
-        ),
-        tokenizer=Path(
-            "artifacts/downloaded/vast_gigachat3_10b_a1_8b_aabb_qf2_lora_bf16/best_adapter/tokenizer.json"
-        ),
-        adapter_dir=Path("artifacts/downloaded/vast_gigachat3_10b_a1_8b_aabb_qf2_lora_bf16/best_adapter"),
-        hf_base_model="ai-sage/GigaChat3-10B-A1.8B-base",
-        hf_load_in_4bit=True,
-        hf_bf16=True,
-        note="Русская base-модель GigaChat3, дообученная LoRA на том же AABB CCDD корпусе для честного сравнения с scratch и Qwen.",
-    ),
 ]
 
 
