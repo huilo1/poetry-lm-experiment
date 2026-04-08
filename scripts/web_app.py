@@ -170,7 +170,7 @@ def build_index_html() -> str:
             }
             .status-grid, .results {
               display: grid;
-              grid-template-columns: repeat(3, minmax(0, 1fr));
+              grid-template-columns: repeat(4, minmax(0, 1fr));
               gap: 16px;
             }
             .card {
@@ -235,9 +235,10 @@ def build_index_html() -> str:
                   Эксперимент по обучению небольшой языковой модели с нуля только на корпусе русской поэзии.
                   Сначала была собрана и очищена выборка стихов, затем проверены несколько постановок задачи:
                   свободное продолжение, строгие 8 строк с рифмовкой `AABB CCDD`, альтернативная схема `ABAB ABAB`
-                  и двухшаговая planner-ветка, где сначала предсказываются окончания строк, а затем генерируется
-                  весь текст под этот план. Ниже можно сравнить, как эти ветки продолжают стих по одной первой
-                  строке и какая из них лучше удерживает форму и рифму. Базовая архитектура:
+                  , двухшаговая planner-ветка, где сначала предсказываются окончания строк, и diffusion-style
+                  refiner-ветка, где baseline сначала пишет черновик, а затем отдельный denoiser пытается его
+                  отредактировать. Ниже можно сравнить, как эти ветки продолжают стих по одной первой строке
+                  и какая из них лучше удерживает форму и рифму. Базовая архитектура:
                   decoder-only Transformer с 8 слоями, 6 attention heads, скрытой размерностью 384 и контекстом 256 токенов.
                 </p>
                 <div class="hero-links">
@@ -303,7 +304,13 @@ def build_index_html() -> str:
                     ${model.planner_checkpoint
                       ? `<div><strong>planner checkpoint</strong><br><code>${model.planner_checkpoint}</code></div>`
                       : ""}
-                    <div style="${model.planner_checkpoint ? "margin-top:10px" : ""}"><strong>checkpoint</strong><br><code>${model.checkpoint}</code></div>
+                    ${model.refiner_checkpoint
+                      ? `<div style="${model.planner_checkpoint ? "margin-top:10px" : ""}"><strong>refiner checkpoint</strong><br><code>${model.refiner_checkpoint}</code></div>`
+                      : ""}
+                    <div style="${(model.planner_checkpoint || model.refiner_checkpoint) ? "margin-top:10px" : ""}"><strong>checkpoint</strong><br><code>${model.checkpoint}</code></div>
+                    ${model.refiner_tokenizer
+                      ? `<div style="margin-top:10px"><strong>refiner tokenizer</strong><br><code>${model.refiner_tokenizer}</code></div>`
+                      : ""}
                   </div>
                 </article>
               `).join("");

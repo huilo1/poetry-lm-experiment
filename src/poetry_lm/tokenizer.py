@@ -15,6 +15,7 @@ STRUCTURED_TOKENS = [
     "<PROMPT>",
     "<GEN>",
     "<PLAN>",
+    "<MASK>",
     "<LEN_8>",
     "<SCHEME_AABB_CCDD>",
     "<SCHEME_ABAB_ABAB>",
@@ -154,6 +155,15 @@ class Tokenizer:
 
     def nl_id(self) -> int:
         return self.sp.piece_to_id("<NL>")
+
+    def mask_id(self) -> int:
+        return self.sp.piece_to_id("<MASK>")
+
+    def piece_id(self, piece: str) -> int:
+        return self.sp.piece_to_id(piece)
+
+    def piece(self, idx: int) -> str:
+        return self.sp.id_to_piece(idx)
 
     def encode_poem(self, text: str) -> list[int]:
         return self.sp.encode(poem_to_training_text(text), out_type=int, add_bos=True, add_eos=True)
