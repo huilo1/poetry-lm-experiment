@@ -7,10 +7,8 @@ import subprocess
 import gradio as gr
 
 from poetry_lm.inference import (
-    generate_gigachat_text,
     generate_text,
     load_bundle,
-    load_gigachat_bundle,
     resolve_device,
 )
 from poetry_lm.model_registry import model_specs
@@ -106,22 +104,6 @@ def generate_all(prompt: str, temperature: float, top_k: int, device: str):
                     top_k=int(top_k),
                 )
                 outputs.append(output)
-            elif spec.is_gigachat_lora:
-                bundle = load_gigachat_bundle(
-                    adapter_dir=spec.adapter_dir,
-                    base_model=spec.hf_base_model,
-                    device=device,
-                    load_in_4bit=spec.hf_load_in_4bit,
-                    bf16=spec.hf_bf16,
-                )
-                outputs.append(
-                    generate_gigachat_text(
-                        bundle=bundle,
-                        prompt=prompt,
-                        temperature=float(temperature),
-                        top_k=int(top_k),
-                    )
-                )
             else:
                 bundle = load_bundle(spec.checkpoint, spec.tokenizer, device=device)
                 outputs.append(
@@ -150,7 +132,7 @@ def build_demo(device: str) -> gr.Blocks:
         gr.Markdown(
             """
             # Poetry LM Compare
-            Сравнение четырех актуальных веток генерации по одной первой строке.
+            Сравнение трех актуальных веток генерации по одной первой строке.
             """,
             elem_classes=["poetry-shell"],
         )
@@ -206,13 +188,6 @@ def build_demo(device: str) -> gr.Blocks:
                 elem_classes=["poetry-out"],
                 buttons=["copy"],
             )
-            output_gigachat = gr.Textbox(
-                label="GigaChat3 base + LoRA",
-                lines=18,
-                max_lines=24,
-                elem_classes=["poetry-out"],
-                buttons=["copy"],
-            )
 
         gr.Markdown(
             "Пока скрытое по умолчанию: `max_new_tokens=160`, device выбирается автоматически. "
@@ -220,7 +195,7 @@ def build_demo(device: str) -> gr.Blocks:
             elem_classes=["poetry-note"],
         )
 
-        outputs = [status, output_aabb, output_abab, output_planner, output_gigachat]
+        outputs = [status, output_aabb, output_abab, output_planner]
         generate_btn.click(
             fn=generate_all,
             inputs=[prompt, temperature, top_k, device_state],
