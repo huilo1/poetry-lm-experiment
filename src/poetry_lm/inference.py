@@ -8,6 +8,11 @@ import torch
 
 from poetry_lm.model import GPT, GPTConfig
 from poetry_lm.tokenizer import PLANNER_MODE_AABB, STRUCTURED_MODE_AABB_PLAN, Tokenizer
+from poetry_lm.gigachat_sft import (
+    extract_generated_lines,
+    prepare_gigachat_local_model_dir,
+    render_prompt_prefix,
+)
 
 
 @dataclass
@@ -21,7 +26,20 @@ class LoadedBundle:
     checkpoint_mtime_ns: int
 
 
+@dataclass
+class LoadedGigaChatBundle:
+    adapter_dir: Path
+    base_model: str
+    device: str
+    load_in_4bit: bool
+    bf16: bool
+    model: object
+    tokenizer: object
+    adapter_mtime_ns: int
+
+
 _CACHE: dict[tuple[str, str, str], LoadedBundle] = {}
+_GIGACHAT_CACHE: dict[tuple[str, str, str, bool, bool], LoadedGigaChatBundle] = {}
 _CACHE_LOCK = Lock()
 
 
@@ -65,6 +83,72 @@ def load_bundle(
 
     with _CACHE_LOCK:
         _CACHE[cache_key] = bundle
+
+    return bundle
+
+
+def _build_quantization_config(load_in_4bit: bool, bf16: bool):
+    if not load_in_4bit:
+        return None
+    from transformers import BitsAndBytesConfig
+
+    return BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16 if bf16 else torch.float16,
+    )
+
+
+def load_gigachat_bundle(
+    adapter_dir: str | Path,
+    base_model: str,
+    device: str = "auto",
+    load_in_4bit: bool = True,
+    bf16: bool = True,
+) -> LoadedGigaChatBundle:
+    from peft import PeftModel
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    resolved_device = resolve_device(device)
+    adapter_path = Path(adapter_dir).resolve()
+    adapter_model_path = adapter_path / "adapter_model.safetensors"
+    adapter_mtime_ns = adapter_model_path.stat().st_mtime_ns
+    cache_key = (str(adapter_path), base_model, resolved_device, load_in_4bit, bf16)
+
+    with _CACHE_LOCK:
+        cached = _GIGACHAT_CACHE.get(cache_key)
+        if cached and cached.adapter_mtime_ns == adapter_mtime_ns:
+            return cached
+
+    local_base_model = prepare_gigachat_local_model_dir(base_model)
+    tokenizer = AutoTokenizer.from_pretrained(adapter_path)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    quantization_config = _build_quantization_config(load_in_4bit=load_in_4bit, bf16=bf16)
+    model = AutoModelForCausalLM.from_pretrained(
+        local_base_model,
+        dtype=torch.bfloat16 if bf16 else torch.float16,
+        device_map="auto" if resolved_device != "cpu" else None,
+        quantization_config=quantization_config,
+        attn_implementation="sdpa",
+    )
+    model = PeftModel.from_pretrained(model, adapter_path)
+    model.eval()
+
+    bundle = LoadedGigaChatBundle(
+        adapter_dir=adapter_path,
+        base_model=base_model,
+        device=resolved_device,
+        load_in_4bit=load_in_4bit,
+        bf16=bf16,
+        model=model,
+        tokenizer=tokenizer,
+        adapter_mtime_ns=adapter_mtime_ns,
+    )
+
+    with _CACHE_LOCK:
+        _GIGACHAT_CACHE[cache_key] = bundle
 
     return bundle
 
@@ -144,3 +228,28 @@ def generate_text_with_planner(
         plan_endings=plan,
     )
     return plan, text
+
+
+@torch.no_grad()
+def generate_gigachat_text(
+    bundle: LoadedGigaChatBundle,
+    prompt: str,
+    max_new_tokens: int = 160,
+    temperature: float = 0.8,
+    top_k: int = 40,
+) -> str:
+    prompt_text = render_prompt_prefix(prompt)
+    model_inputs = bundle.tokenizer(prompt_text, return_tensors="pt").to(bundle.model.device)
+    generated = bundle.model.generate(
+        **model_inputs,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        top_k=top_k,
+        do_sample=True,
+        pad_token_id=bundle.tokenizer.pad_token_id,
+        eos_token_id=bundle.tokenizer.eos_token_id,
+    )
+    generated_ids = generated[0][model_inputs["input_ids"].shape[1] :]
+    continuation = bundle.tokenizer.decode(generated_ids, skip_special_tokens=True)
+    lines = extract_generated_lines(prompt, continuation)
+    return "\n".join(lines)

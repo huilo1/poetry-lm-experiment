@@ -6,9 +6,14 @@ import subprocess
 
 import gradio as gr
 
-from poetry_lm.inference import generate_text, load_bundle, resolve_device
+from poetry_lm.inference import (
+    generate_gigachat_text,
+    generate_text,
+    load_bundle,
+    load_gigachat_bundle,
+    resolve_device,
+)
 from poetry_lm.model_registry import model_specs
-from poetry_lm.refiner import load_refiner, refine_draft_text
 
 
 MAX_NEW_TOKENS = 160
@@ -101,30 +106,22 @@ def generate_all(prompt: str, temperature: float, top_k: int, device: str):
                     top_k=int(top_k),
                 )
                 outputs.append(output)
-            elif spec.is_refiner_guided:
-                baseline_bundle = load_bundle(spec.checkpoint, spec.tokenizer, device=device)
-                draft = generate_text(
-                    bundle=baseline_bundle,
-                    prompt=prompt,
-                    max_new_tokens=MAX_NEW_TOKENS,
-                    temperature=float(temperature),
-                    top_k=int(top_k),
-                )
-                refiner, refiner_tokenizer, _ = load_refiner(
-                    spec.refiner_checkpoint,
-                    spec.refiner_tokenizer,
+            elif spec.is_gigachat_lora:
+                bundle = load_gigachat_bundle(
+                    adapter_dir=spec.adapter_dir,
+                    base_model=spec.hf_base_model,
                     device=device,
+                    load_in_4bit=spec.hf_load_in_4bit,
+                    bf16=spec.hf_bf16,
                 )
-                refined = refine_draft_text(
-                    model=refiner,
-                    tokenizer=refiner_tokenizer,
-                    draft_text=draft,
-                    device=device,
-                    steps=8,
-                    temperature=0.8,
-                    top_k=32,
+                outputs.append(
+                    generate_gigachat_text(
+                        bundle=bundle,
+                        prompt=prompt,
+                        temperature=float(temperature),
+                        top_k=int(top_k),
+                    )
                 )
-                outputs.append(refined)
             else:
                 bundle = load_bundle(spec.checkpoint, spec.tokenizer, device=device)
                 outputs.append(
@@ -209,8 +206,8 @@ def build_demo(device: str) -> gr.Blocks:
                 elem_classes=["poetry-out"],
                 buttons=["copy"],
             )
-            output_refiner = gr.Textbox(
-                label="AABB refiner-guided",
+            output_gigachat = gr.Textbox(
+                label="GigaChat3 base + LoRA",
                 lines=18,
                 max_lines=24,
                 elem_classes=["poetry-out"],
@@ -223,7 +220,7 @@ def build_demo(device: str) -> gr.Blocks:
             elem_classes=["poetry-note"],
         )
 
-        outputs = [status, output_aabb, output_abab, output_planner, output_refiner]
+        outputs = [status, output_aabb, output_abab, output_planner, output_gigachat]
         generate_btn.click(
             fn=generate_all,
             inputs=[prompt, temperature, top_k, device_state],

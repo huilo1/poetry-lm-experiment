@@ -11,9 +11,17 @@ class ModelSpec:
     checkpoint: Path
     tokenizer: Path
     note: str
+    adapter_dir: Path | None = None
+    hf_base_model: str | None = None
+    hf_load_in_4bit: bool = False
+    hf_bf16: bool = False
     planner_checkpoint: Path | None = None
     refiner_checkpoint: Path | None = None
     refiner_tokenizer: Path | None = None
+
+    @property
+    def is_gigachat_lora(self) -> bool:
+        return self.adapter_dir is not None and self.hf_base_model is not None
 
     @property
     def is_planner_guided(self) -> bool:
@@ -24,6 +32,11 @@ class ModelSpec:
         return self.refiner_checkpoint is not None
 
     def all_checkpoints(self) -> list[Path]:
+        if self.is_gigachat_lora:
+            return [
+                self.checkpoint,
+                self.adapter_dir / "adapter_config.json",
+            ]
         paths = [self.checkpoint]
         if self.planner_checkpoint is not None:
             paths.insert(0, self.planner_checkpoint)
@@ -32,6 +45,11 @@ class ModelSpec:
         return paths
 
     def all_tokenizers(self) -> list[Path]:
+        if self.is_gigachat_lora:
+            return [
+                self.tokenizer,
+                self.adapter_dir / "tokenizer_config.json",
+            ]
         paths = [self.tokenizer]
         if self.refiner_tokenizer is not None:
             paths.append(self.refiner_tokenizer)
@@ -62,13 +80,19 @@ MODEL_SPECS = [
         note="Новая ветка: planner сначала предсказывает окончания строк 2/4/6/8, затем generator пишет стих под этот план.",
     ),
     ModelSpec(
-        key="aabb_refiner",
-        title="AABB refiner-guided",
-        checkpoint=Path("artifacts/checkpoints/host_5060_8line_20m/best.pt"),
-        tokenizer=Path("artifacts/tokenizer_aabb8/poetry.model"),
-        refiner_checkpoint=Path("artifacts/checkpoints/vast_refiner_aabb_20m/best.pt"),
-        refiner_tokenizer=Path("artifacts/tokenizer_refiner/poetry.model"),
-        note="Diffusion-style refiner: baseline сначала пишет черновик, затем bidirectional denoiser пытается отредактировать текст.",
+        key="gigachat_base_lora",
+        title="GigaChat3 base + LoRA",
+        checkpoint=Path(
+            "artifacts/downloaded/vast_gigachat3_10b_a1_8b_aabb_qf2_lora_bf16/best_adapter/adapter_model.safetensors"
+        ),
+        tokenizer=Path(
+            "artifacts/downloaded/vast_gigachat3_10b_a1_8b_aabb_qf2_lora_bf16/best_adapter/tokenizer.json"
+        ),
+        adapter_dir=Path("artifacts/downloaded/vast_gigachat3_10b_a1_8b_aabb_qf2_lora_bf16/best_adapter"),
+        hf_base_model="ai-sage/GigaChat3-10B-A1.8B-base",
+        hf_load_in_4bit=True,
+        hf_bf16=True,
+        note="Русская base-модель GigaChat3, дообученная LoRA на том же AABB CCDD корпусе для честного сравнения с scratch и Qwen.",
     ),
 ]
 
