@@ -9,13 +9,15 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-if [[ ! -f deploy/model-release.env ]]; then
-  echo "deploy/model-release.env not found" >&2
+deploy_config_file="${DEPLOY_CONFIG_FILE:-/etc/poetry-lm/model-release.env}"
+
+if [[ ! -r "$deploy_config_file" ]]; then
+  echo "Private deployment configuration is missing; set DEPLOY_CONFIG_FILE or install /etc/poetry-lm/model-release.env" >&2
   exit 1
 fi
 
 set -a
-source deploy/model-release.env
+source "$deploy_config_file"
 set +a
 
 : "${APP_DIR:?APP_DIR must be set}"

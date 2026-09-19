@@ -17,4 +17,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run repo deploy instructions
-        run: bash deploy/deploy-prod.sh
+        shell: bash
+        env:
+          DEPLOY_CONFIG: ${{ secrets.DEPLOY_CONFIG }}
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_CONFIG:?Configure the private DEPLOY_CONFIG repository secret}"
+          umask 077
+          deploy_config_file="$(mktemp "${RUNNER_TEMP}/deploy-config.XXXXXX")"
+          trap 'rm -f "$deploy_config_file"' EXIT
+          printf '%s\n' "$DEPLOY_CONFIG" > "$deploy_config_file"
+          unset DEPLOY_CONFIG
+          DEPLOY_CONFIG_FILE="$deploy_config_file" bash deploy/deploy-prod.sh
